@@ -42,7 +42,8 @@ the card itself. The page is always one screen: the card, its places and the ele
 - the elements fold in groups: Meters, Model, Session, Workspace, Machine and Chips. Hovering or focusing one shows
   what it shows (`WHAT` in `configure.py`), where it can go and where it is;
 - `Alt` `←` `→` move an element within its place; rows are added and deleted on the page;
-- Look holds the palettes and the bars;
+- the Look tab, beside Elements, holds the bars a meter has and the palettes, each drawn as a little card: its name in
+  its top edge, in its accent, around a meter in its colours;
 - `Ctrl` `S` saves (written whole, through a temporary file), `Ctrl` `Z` undoes.
 
 The server answers only this machine's page (Host and Origin) and runs every setting through `load_config` before it

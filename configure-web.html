@@ -71,7 +71,7 @@ header { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
 
 /* the editor: the card's places on the left, the elements on the right */
 .editor { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 620px); grid-template-rows: minmax(0, 1fr); gap: 18px; padding: 18px; min-height: 0; }
-.editor > *, .look > * { min-width: 0; }
+.editor > * { min-width: 0; }
 .cardedit { padding: 6px 4px 4px; }
 .edge { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 0 22px; }
 .edge.top { margin-bottom: -21px; } .edge.bottom { margin-top: -21px; align-items: flex-start; }
@@ -112,6 +112,13 @@ legend { padding: 0 8px; margin-left: 6px; font-size: 13px; font-weight: 600; }
   background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.1); transition: background .18s, box-shadow .18s; }
 .tray .hint { margin: 0 0 8px; font-size: 12px; color: var(--ink-3); }
 #groups { flex: 1; min-height: 0; margin: 0 -10px 0 -6px; padding: 0 6px 14px; }
+/* its two tabs sit in its top edge, where a box's title goes */
+.tabs { display: flex; gap: 2px; padding: 0 4px; }
+.tabs button { padding: 3px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--ink-3); font: 600 13px var(--sans);
+  cursor: pointer; transition: background .15s, color .15s; }
+.tabs button:hover { color: var(--ink-2); }
+.tabs button[aria-selected="true"] { color: var(--ink); background: rgba(255,255,255,.12); }
+.panel { display: flex; flex-direction: column; flex: 1; min-height: 0; } .panel[hidden] { display: none; }
 .group + .group { border-top: 1px solid rgba(255,255,255,.07); }
 .fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 6px; border: 0; border-radius: 10px; background: transparent; cursor: pointer;
   color: var(--ink-2); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; transition: background .15s, color .15s; }
@@ -159,20 +166,21 @@ body.dragging { user-select: none; }
 .zone.over { border-style: solid; border-color: #fff; background: rgba(255,255,255,.09);
   box-shadow: 0 0 0 4px rgba(255,255,255,.07), 0 0 30px -8px rgba(150,230,255,.5); }
 
-/* the look, under the card's places */
+/* the card's places on the left; the palettes in the tray's Look tab */
 .side { display: grid; gap: 22px; align-content: start; min-height: 0; padding-right: 4px; }
-.look { display: flex; align-items: center; gap: 18px; padding: 6px 16px 14px; flex-wrap: wrap; border-radius: 18px; background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.1); }
-.pals { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
-.pal { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,.14);
-  background: rgba(255,255,255,.08); cursor: pointer; font-size: 12.5px; font-weight: 500; transition: background .15s, border-color .15s; }
-.pal:hover { background: rgba(255,255,255,.14); }
-.pal.on { border-color: #fff; background: rgba(255,255,255,.18); box-shadow: 0 0 0 3px rgba(255,255,255,.1); }
-.pal .sw { display: inline-flex; gap: 3px; } .pal .sw i { width: 9px; height: 9px; border-radius: 50%; display: block; }
-.bars { display: inline-flex; align-items: center; gap: 4px; padding: 3px; border-radius: 18px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }
-.bars button { width: 30px; height: 30px; border-radius: 50%; border: 0; background: transparent; cursor: pointer; font-size: 16px; }
-.bars button:hover:not(:disabled) { background: rgba(255,255,255,.14); } .bars button:disabled { opacity: .35; cursor: default; }
-.bars output { min-width: 74px; text-align: center; font-size: 12.5px; color: var(--ink-2); }
-.bars output b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pals { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px 10px; align-content: start; flex: 1; min-height: 0;
+  margin: 0 -10px 0 -6px; padding: 6px 6px 14px; }
+.palbox, .barsbox { border: 1.5px solid; border-radius: 12px; padding: 2px 10px 8px; transition: background .15s; }
+.palbox legend, .barsbox legend { padding: 0 6px; margin-left: 2px; font: 600 12.5px var(--mono); }
+.palbox { cursor: pointer; } .palbox:hover { background: rgba(255,255,255,.06); } .palbox.on { background: rgba(255,255,255,.13); }
+.pal { display: block; width: 100%; padding: 2px 0 0; border: 0; background: none; text-align: left; cursor: pointer; }
+.pal:focus-visible { outline-offset: 4px; border-radius: 6px; }
+.meter { font-family: var(--mono); white-space: pre; line-height: 1.4; } .meter i { font-style: normal; } .meter b { font-weight: 700; }
+.barsbox { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 4px 10px 8px; }
+.barsbox button { width: 28px; height: 28px; flex: none; border-radius: 50%; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.08);
+  cursor: pointer; font-size: 15px; line-height: 1; }
+.barsbox button:hover:not(:disabled) { background: rgba(255,255,255,.16); } .barsbox button:disabled { opacity: .35; cursor: default; }
+.barsbox output { margin-left: auto; font-size: 12.5px; color: var(--ink-2); } .barsbox output b { color: #fff; font-variant-numeric: tabular-nums; }
 
 /* what an element is, on hover or keyboard focus */
 .tip { position: fixed; left: 0; top: 0; z-index: 70; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px 11px; border-radius: 14px;
@@ -231,18 +239,20 @@ body.dragging { user-select: none; }
           <div class="zone" data-place="edge" tabindex="0"><span class="tag">Bottom edge</span></div>
         </div>
       </div>
-      <fieldset class="look">
-        <legend>Look</legend>
-        <div class="pals" id="pals"></div>
-        <div class="bars" aria-label="Bars in a meter">
-          <button id="barsDown" aria-label="Fewer bars">−</button><output id="barsOut"></output><button id="barsUp" aria-label="More bars">+</button>
-        </div>
-      </fieldset>
     </div>
     <fieldset class="tray" id="tray">
-      <legend>Elements</legend>
-      <p class="hint">Drag one onto the card, or click it. Hover one to see what it shows.</p>
-      <div id="groups" class="scroller"></div>
+      <legend class="tabs" role="tablist" aria-label="Elements and look">
+        <button role="tab" id="tabElements" aria-controls="panelElements" aria-selected="true">Elements</button>
+        <button role="tab" id="tabLook" aria-controls="panelLook" aria-selected="false" tabindex="-1">Look</button>
+      </legend>
+      <div class="panel" id="panelElements" role="tabpanel" aria-labelledby="tabElements">
+        <p class="hint">Drag one onto the card, or click it. Hover one to see what it shows.</p>
+        <div id="groups" class="scroller"></div>
+      </div>
+      <div class="panel" id="panelLook" role="tabpanel" aria-labelledby="tabLook" hidden>
+        <p class="hint">The card's colours: click one to try it on the card above.</p>
+        <div class="pals scroller" id="pals"></div>
+      </div>
     </fieldset>
   </section>
 </div>
@@ -568,13 +578,36 @@ document.addEventListener('focusout', e => { if (e.target === tipFor) hideTip();
 document.addEventListener('pointerdown', hideTip, true);
 document.addEventListener('scroll', e => { hideTip(); if (e.target.classList?.contains('scroller')) edges(); }, { capture: true, passive: true });
 new ResizeObserver(() => edges()).observe($('.editor'));
+// a meter as the card draws it in palette p: each full bar in the heat of its place, the rest empty, then the percent
+function meter(p, m, pct) {
+  const stops = [[0, p.green], [0.6, p.yellow], [0.85, p.orange], [1, p.red]];
+  const heat = t => {
+    let i = 1;
+    while (i < stops.length - 1 && t > stops[i][0]) i++;
+    const [a, ca] = stops[i - 1], [b, cb] = stops[i], k = (t - a) / (b - a);
+    return ca.map((u, j) => Math.round(u + (cb[j] - u) * k));
+  };
+  const full = Math.round(pct / 100 * m);
+  return Array.from({ length: full }, (_, i) => `<i style="color:${rgb(heat((i + 0.5) / m))}">▰</i>`).join('') +
+    `<i style="color:${rgb(p.empty)}">${'▱'.repeat(m - full)}</i> <b style="color:${rgb(heat(pct / 100))}">${pct}%</b>`;
+}
+// the look: the bars a meter has, then the palettes, each a little card: its name in the accent, in an edge of its colour
 function drawLook() {
-  $('#pals').innerHTML = Object.entries(S.palettes).map(([name, p]) =>
-    `<button class="pal${cfg.palette === name ? ' on' : ''}" data-p="${esc(name)}" aria-pressed="${cfg.palette === name}">` +
-    `<span class="sw">${['accent', 'green', 'yellow', 'red', 'blue'].map(k => `<i style="background:${rgb(p[k])}"></i>`).join('')}</span>${esc(name)}</button>`).join('');
-  $('#barsOut').innerHTML = `<b>${cfg.meter}</b> bars`;
-  $('#barsDown').disabled = cfg.meter <= 3;
-  $('#barsUp').disabled = cfg.meter >= 30;
+  const used = document.activeElement?.closest?.('#pals [data-bars], #pals [data-p]');
+  const again = used && (used.dataset.bars ? `[data-bars="${used.dataset.bars}"]` : `[data-p="${CSS.escape(used.dataset.p)}"] .pal`);
+  const cur = S.palettes[cfg.palette] || S.palettes.default, size = Math.min(16, 170 / ((cfg.meter + 5) * 0.6));
+  $('#pals').innerHTML =
+    `<fieldset class="barsbox" style="border-color:${rgb(cur.edge)}"><legend style="color:${rgb(cur.accent)}">bars</legend>` +
+    `<button data-bars="-1" aria-label="Fewer bars"${cfg.meter <= 3 ? ' disabled' : ''}>−</button>` +
+    `<span class="meter" style="font-size:${size * 1.25}px">${meter(cur, cfg.meter, 80)}</span>` +
+    `<button data-bars="1" aria-label="More bars"${cfg.meter >= 30 ? ' disabled' : ''}>+</button><output><b>${cfg.meter}</b> bars</output></fieldset>` +
+    Object.entries(S.palettes).map(([name, p]) => {
+      const on = cfg.palette === name;
+      return `<fieldset class="palbox${on ? ' on' : ''}" data-p="${esc(name)}" style="border-color:${rgb(p.edge)}">` +
+        `<legend style="color:${rgb(p.accent)}">${esc(name)}${on ? ' ✓' : ''}</legend>` +
+        `<button class="pal" aria-pressed="${on}" aria-label="${esc(name)}"><span class="meter" style="font-size:${size}px">${meter(p, cfg.meter, 80)}</span></button></fieldset>`;
+    }).join('');
+  if (again) $(again)?.focus();  // the button just used keeps the focus as the look is drawn anew
 }
 function drawState(text) {
   const dirty = snap(cfg) !== snap(saved);
@@ -633,9 +666,28 @@ addEventListener('resize', drawScreen);
   S = await api('/api/state');
   cfg = JSON.parse(snap(S.cfg)); saved = JSON.parse(snap(S.cfg));
   $('#addRow').addEventListener('click', () => { commit(() => cfg.rows.push([])); setActive('rows', cfg.rows.length - 1); });
-  $('#pals').addEventListener('click', e => { const p = e.target.closest('.pal')?.dataset.p; if (p && p !== cfg.palette) commit(() => { cfg.palette = p; }); });
-  $('#barsDown').addEventListener('click', () => commit(() => { cfg.meter = Math.max(3, cfg.meter - 1); }));
-  $('#barsUp').addEventListener('click', () => commit(() => { cfg.meter = Math.min(30, cfg.meter + 1); }));
+  $('#pals').addEventListener('click', e => {
+    const b = e.target.closest('[data-bars]'), p = e.target.closest('[data-p]')?.dataset.p;
+    if (b) commit(() => { cfg.meter = Math.max(3, Math.min(30, cfg.meter + +b.dataset.bars)); });
+    else if (p && p !== cfg.palette) commit(() => { cfg.palette = p; });
+  });
+  // the tray's tabs: a click, or ← → between them
+  const showTab = id => {
+    for (const t of $$('.tabs [role=tab]')) {
+      const on = t.id === id;
+      t.setAttribute('aria-selected', on);
+      t.tabIndex = on ? 0 : -1;
+      $('#' + t.getAttribute('aria-controls')).hidden = !on;
+    }
+    edges();
+  };
+  $('.tabs').addEventListener('click', e => { const t = e.target.closest('[role=tab]'); if (t) showTab(t.id); });
+  $('.tabs').addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const next = $('.tabs [aria-selected=false]');
+    showTab(next.id);
+    next.focus();
+  });
   $('#save').addEventListener('click', save);
   $('#undo').addEventListener('click', undo);
   document.addEventListener('keydown', e => {
