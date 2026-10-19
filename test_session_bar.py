@@ -362,4 +362,58 @@ F = 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'
 assert sb.env_flag(b'A=1\0' + F.encode() + b'=1\0', F) is True and sb.env_flag(F.encode() + b'=true\0', F) is True
 assert sb.env_flag(F.encode() + b'=0\0', F) is False and sb.env_flag(b'', F) is False
 assert sb.env_flag(b'X_' + F.encode() + b'=1\0', F) is False
+
+# the settings page (configure-web.py): its cleaning, its sample, the card it draws, the previews, guards, lifetime
+wspec = importlib.util.spec_from_file_location('web', os.path.join(os.path.dirname(spec.origin), 'configure-web.py'))
+web = importlib.util.module_from_spec(wspec)
+wspec.loader.exec_module(web)
+c = web.clean({'rows': [['ctx', 'bogus', 'rc'], ['repo']], 'edge': ['rc', 'ctx'], 'palette': 'nord', 'meter': 99})
+assert c['rows'] == [['ctx'], ['repo']] and c['edge'] == ['rc'] and c['palette'] == 'nord' and c['meter'] == 30, c
+d = web.sample({'ctx': 150, '5h': 42.5, 'week': 'x'})
+assert d['context_window']['used_percentage'] == 100 and d['rate_limits']['five_hour']['used_percentage'] == 42.5, d
+assert d['rate_limits']['seven_day']['used_percentage'] == web.cf.SAMPLE['rate_limits']['seven_day']['used_percentage']
+assert web.cf.SAMPLE['context_window']['used_percentage'] != 100  # the sample itself is left as it was
+for cols, rc in ((188, True), (188, False), (59, True), (40, False)):
+    r = web.render(c, cols, rc, d)
+    assert r['width'] == sb.card_width(cols, rc) and all(sum(len(p[0]) for p in l) == r['width'] for l in r['lines']), (cols, rc)
+pv = web.previews(c, d)
+flat = lambda pieces: ''.join(p[0] for p in pieces)
+assert set(pv) == set(sb.TEXT + sb.METERS + sb.CHIPS), set(pv) ^ set(sb.TEXT + sb.METERS + sb.CHIPS)
+assert flat(pv['ctx']).startswith('ctx ▰') and flat(pv['repo']).startswith('⎇ ') and flat(pv['rc']).endswith('rc'), pv['rc']
+pal = web.palette_rows(c, d)
+assert set(pal) == set(sb.PALETTES) and pal['nord'] != pal['dracula'] and flat(pal['nord']).startswith('ctx ▰'), pal['nord']
+H = {'127.0.0.1:8790'}
+assert web.trusted('127.0.0.1:8790', None, 'GET', H) and web.trusted('127.0.0.1:8790', 'http://127.0.0.1:8790', 'POST', H)
+assert not web.trusted('evil.example:8790', None, 'GET', H) and not web.trusted('127.0.0.1:8790', 'http://evil.example', 'POST', H)
+life = web.Life(1000)
+assert not life.over(1299) and life.over(1301)  # no page yet: five minutes, to open the address by hand
+life.ping(1400)
+assert not life.over(1549) and life.over(1551)  # silence: 2.5 minutes, past a background tab's once-a-minute timers
+life.bye(1560)
+assert not life.over(1563) and life.over(1565)  # the page said goodbye: a few seconds, in case it was a reload
+
+import threading
+import urllib.error
+import urllib.request
+
+with tempfile.TemporaryDirectory() as t:
+    web.SAVE = os.path.join(t, 'session-bar.json')
+    srv = web.make_server(0, web.Life(time.time()))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f'http://127.0.0.1:{srv.server_address[1]}'
+    post = lambda path, body, **h: urllib.request.urlopen(urllib.request.Request(
+        base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **h}), timeout=5)
+    st = json.load(urllib.request.urlopen(base + '/api/state', timeout=5))
+    assert st['cfg'] == sb.load_config(web.SAVE) and set(st['palettes']) == set(sb.PALETTES), st['cfg']
+    got = json.load(post('/api/render', {'cfg': {'rows': [['week']]}, 'columns': 120, 'rc': True, 'sample': {'week': 91}}))
+    assert got['width'] == 112 and flat(got['lines'][1]).startswith('│ week ▰▰▰▰▰▰▰▰▰▱ 92%') and set(got['previews']) == set(pv), got['lines'][1]
+    try:
+        post('/api/save', {'cfg': c}, Origin='http://evil.example')
+        raise AssertionError('a foreign page saved the settings')
+    except urllib.error.HTTPError as e:
+        assert e.code == 403 and not os.path.exists(web.SAVE), e.code
+    json.load(post('/api/save', {'cfg': c}))
+    assert sb.load_config(web.SAVE) == c
+    srv.shutdown()
+    srv.server_close()
 print('ok')

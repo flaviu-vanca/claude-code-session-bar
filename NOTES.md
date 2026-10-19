@@ -13,6 +13,7 @@ is Python 3 stdlib only, runs with `python3 -I -S`, and one run takes about 20 m
 |---|---|
 | The card, on a payload | `python3 -I -S session-bar.py [--meter N] < payload.json` |
 | The settings, with the card drawn live | `python3 configure.py`, in a terminal of its own (`!` is not interactive) |
+| The settings in the browser, drag and drop | `python3 configure-web.py [port]`, in a terminal of its own: it serves the page on 127.0.0.1, opens it, and stops a few seconds after the page closes |
 | Tests (prints `ok`) | `python3 -I test_session_bar.py` |
 | Preview of the chips with sample states | `python3 -I preview/chips.py` |
 
