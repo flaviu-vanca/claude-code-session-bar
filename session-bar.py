@@ -12,6 +12,7 @@ import fcntl
 import json
 import os
 import re
+import stat
 import struct
 import sys
 import termios
@@ -59,6 +60,7 @@ CACHE_SOON = 120  # seconds of prompt cache left under which the card warns
 VERSION = re.compile(r'^\d+(\.\d+)+$')
 DISKS = ['/tmp', '~/.cache']  # the tmpfs and the scratch disk
 FOOTER_PADDING = 2  # columns Claude Code's footer row keeps on each side of the status line (oQe); its notes wrap below
+RC_PILL = len(' /rc')  # Claude Code's /rc pill and the gap before it (columnGap 1), shown from 60 columns (Tbn)
 CONFIG = os.environ.get('SESSION_BAR_CONFIG') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'session-bar.json')
 # what each place can hold: text on the top edge, anything but chips on a row, chips on the bottom edge
 TEXT = ['model', 'effort', 'thinking', 'style', 'agent', 'name', 'version', 'cost', 'time', 'api', 'lines', 'clock',
@@ -83,9 +85,12 @@ def heat(t):
     return tuple(round(u + (v - u) * k) for u, v in zip(ca, cb))
 
 
+CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f]')  # C0 and C1 controls: a name from disk or the payload never reaches the terminal raw
+
+
 # A piece of a row: its text, its look and an optional link. Every glyph used is one cell wide.
 def P(t, rgb=None, dim=False, bold=False, link=None):
-    return (t, rgb, dim, bold, link)
+    return (CONTROL.sub('', t), rgb, dim, bold, link and CONTROL.sub('', link))
 
 
 def cells(row):
@@ -160,9 +165,10 @@ def tilde(path, home):
     return '~' + path[len(home):] if home and (path == home or path.startswith(home + '/')) else path
 
 
-def card_width(columns):
-    """The card's width: the footer's, the terminal less its padding on both sides; 30 at the least."""
-    return max(30, columns - 2 * FOOTER_PADDING)
+def card_width(columns, rc=False):
+    """The card's width: the footer's, the terminal less its padding on both sides; 30 at the least. While Remote
+    Control is on it also leaves room for the /rc pill, which then sits beside the card's top edge, not under it."""
+    return max(30, columns - 2 * FOOTER_PADDING - (RC_PILL if rc and columns >= 60 else 0))
 
 
 def terminal_columns():
@@ -193,6 +199,15 @@ def terminal_columns():
     return int(os.environ.get('COLUMNS') or 120)
 
 
+def head_of(path, n=256):
+    """The first `n` characters of a regular file; a pipe, a device or anything else reads as empty, so a hostile
+    .git cannot stall the card."""
+    if not stat.S_ISREG(os.stat(path).st_mode):
+        return ''
+    with open(path, errors='replace') as f:
+        return f.read(n)
+
+
 def git_info(cwd):
     """The repository's folder name and branch, read from .git without running git."""
     d = cwd
@@ -202,11 +217,9 @@ def git_info(cwd):
             try:
                 gitdir = dot
                 if os.path.isfile(dot):  # a worktree or a submodule: "gitdir: <path>"
-                    with open(dot) as f:
-                        line = f.read().strip()
+                    line = head_of(dot).strip()
                     gitdir = os.path.join(d, line[8:]) if line.startswith('gitdir: ') else dot
-                with open(os.path.join(gitdir, 'HEAD')) as f:
-                    head = f.read().strip()
+                head = head_of(os.path.join(gitdir, 'HEAD')).strip()
             except OSError:
                 head = ''
             return os.path.basename(d), head[16:] if head.startswith('ref: refs/heads/') else head[:7]
@@ -464,7 +477,9 @@ def card(d, width, now, h, meter=10, chips=(), cfg=None):
         v = rl.get({'5h': 'five_hour', 'week': 'seven_day', 'spend': 'spend_limit'}[name])
         if not v:
             return []
-        g = gauge(name, v.get('used_percentage') or 0, m)
+        p = v.get('used_percentage') or 0
+        # the headers trail claude.ai by about a point (seen 2026-10-19), so 5h and week show 1 more, up to 100
+        g = gauge(name, p if name == 'spend' else min(100, p + 1), m)
         if name == 'spend' and 'tokens' not in gone and v.get('limit_usd'):
             g.append(P(f" ${v.get('used_usd') or 0:.0f}/${v['limit_usd']:.0f}"))
         if 'resets' not in gone and v.get('resets_at'):
@@ -594,16 +609,17 @@ def main():
         d = json.loads(sys.stdin.read() or '{}')
     except ValueError:
         d = {}
-    width = card_width(terminal_columns())
     ws = d.get('workspace') or {}
     project = ws.get('project_dir') or ws.get('current_dir') or d.get('cwd') or os.getcwd()
     h, now, home = host(project), time.time(), os.path.expanduser('~')
     cfg = load_config(CONFIG)
     use_palette(cfg['palette'])
+    rc = None  # Remote Control's session, while it is on
     try:
         rec = session_record(d.get('session_id'), os.path.join(home, '.claude', 'sessions'))
         edge = cfg['edge']
-        s = {'rc': rec.get('bridgeSessionId'), 'busy': rec.get('status') == 'busy', 'sandbox': h.get('sandbox'),
+        rc = rec.get('bridgeSessionId')
+        s = {'rc': rc, 'busy': rec.get('status') == 'busy', 'sandbox': h.get('sandbox'),
              'newest': newest_version(os.path.join(home, '.local', 'share', 'claude', 'versions')),
              'no_transcript': env_flag(launch_env(rec.get('pid')), 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'),
              'mode': last_permission_mode(d.get('transcript_path')) if 'mode' in edge else None,
@@ -612,7 +628,7 @@ def main():
     except (TypeError, ValueError, AttributeError):  # a payload or session file of another shape costs the chips, not the card
         cs = []
     meter = meter_arg(sys.argv) if '--meter' in sys.argv else cfg['meter']
-    lines = card(d, width, now, h, meter, cs, cfg)
+    lines = card(d, card_width(terminal_columns(), bool(rc)), now, h, meter, cs, cfg)
     sys.stdout.buffer.write(''.join(paint(line) + '\n' for line in lines).encode())
 
 

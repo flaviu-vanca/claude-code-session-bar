@@ -40,12 +40,20 @@ for d in SHAPES:
 
 wide = [ANSI.sub('', sb.paint(line)) for line in sb.card(FULL, 151, NOW, HOST)]
 assert '✻ Opus 5.5 · max' in wide[0] and '$123.46 · ◷ 2h36m' in wide[0], wide[0]
-assert 'ctx ▰▱▱▱▱▱▱▱▱▱ 11% 111k/1M · 5h ▰▰▰▰▱▱▱▱▱▱ 42% ↻2h30m · week' in wide[1], wide[1]
-assert 'ctx ▰▱▱▱▱▱▱▱▱▱ 11% 111k/1M' in wide[1] and '5h ▰▰▰▰▱▱▱▱▱▱ 42% ↻2h30m' in wide[1] and 'week ▰▰▰▰▰▰▰▰▰▰ 97% ↻3d11h' in wide[1], wide[1]
+assert 'ctx ▰▱▱▱▱▱▱▱▱▱ 11% 111k/1M · 5h ▰▰▰▰▱▱▱▱▱▱ 43% ↻2h30m · week' in wide[1], wide[1]
+assert 'ctx ▰▱▱▱▱▱▱▱▱▱ 11% 111k/1M' in wide[1] and '5h ▰▰▰▰▱▱▱▱▱▱ 43% ↻2h30m' in wide[1] and 'week ▰▰▰▰▰▰▰▰▰▰ 98% ↻3d11h' in wide[1], wide[1]
 assert '# af9b34f1' in wide[2] and 'mem 3.2/7.5G' in wide[2] and '/tmp 12%' in wide[2] and 'sandbox' not in wide[2], wide[2]
+
+# 5h and week read about a point under claude.ai (the headers trail the server), so they show 1 more, up to 100
+limit_row = lambda p: ANSI.sub('', sb.paint(sb.card({**FULL, 'rate_limits': {'five_hour': {'used_percentage': p, 'resets_at': NOW + 9000}}}, 151, NOW, HOST)[1]))
+assert '5h ▰▰▰▰▰▰▰▰▰▰ 100%' in limit_row(99.6) and '5h ▰▰▰▰▰▰▰▰▰▰ 100%' in limit_row(100), limit_row(100)
+assert '5h ▱▱▱▱▱▱▱▱▱▱ 1%' in limit_row(0) and '5h ▰▰▰▰▰▰▰▱▱▱ 73%' in limit_row(72.4), limit_row(72.4)
 
 # the card spans the footer: the terminal minus Claude Code's 2 columns of padding on each side, at any context
 assert sb.card_width(188) == 184 and sb.card_width(20) == 30
+# while Remote Control is on, the card leaves room for Claude Code's /rc pill and the gap before it, so the pill
+# sits beside the card's top edge; under 60 columns Claude Code hides the pill, so there is nothing to make room for
+assert sb.card_width(188, rc=True) == 180 and sb.card_width(60, rc=True) == 52 and sb.card_width(59, rc=True) == 55
 assert sb.heat(0) == (0x3F, 0xB9, 0x50) and sb.heat(0.6) == (0xE3, 0xB3, 0x41) and sb.heat(1) == (0xF8, 0x51, 0x49)
 assert sb.model_name('claude-opus-5-5', None) == 'Opus 5.5'
 assert sb.model_name('claude-sonnet-5-5[1m]', None) == 'Sonnet 5.5 1M'
@@ -121,6 +129,33 @@ assert sb.meter_arg(['x', '--meter', '99']) == 30 and sb.meter_arg(['x', '--mete
 import json
 import tempfile
 import time
+
+# names from disk or the payload cannot drive the terminal, and a hostile .git cannot stall the card
+import signal
+
+assert sb.P('a\x1b]52;c;eA==\x07b\x9bc')[0] == 'a]52;c;eA==bc' and sb.P('x', link='https://x/\x1b\\y')[4] == 'https://x/\\y'
+assert sb.P('x')[4] is None
+
+
+def stuck(*_):
+    raise RuntimeError('git_info blocked')  # not an OSError, which git_info catches
+
+
+with tempfile.TemporaryDirectory() as t:
+    os.mkdir(os.path.join(t, '.git'))
+    head = os.path.join(t, '.git', 'HEAD')
+    os.mkfifo(head)
+    signal.signal(signal.SIGALRM, stuck)
+    signal.alarm(2)
+    try:
+        assert sb.git_info(t) == (os.path.basename(t), ''), 'a pipe for HEAD reads as nothing'
+    finally:
+        signal.alarm(0)
+    os.remove(head)
+    with open(head, 'w') as f:
+        f.write('ref: refs/heads/' + 'b' * 100_000)
+    assert 0 < len(sb.git_info(t)[1]) <= 256, 'only the start of HEAD is read'
+
 
 with tempfile.TemporaryDirectory() as t:
     sess = os.path.join(t, 'sessions')
@@ -225,7 +260,7 @@ assert wrapped[1].startswith('│ ⌂ /home/u/codewiki · # af9b34f1 · mem 3.2/
 m77 = row({}, 77)
 assert 'ctx ▰▱▱▱▱▱▱ 11% 111k/1M · 5h' in m77[1] and m77[2].startswith('│ ⌂'), m77
 m50 = row({}, 50)
-assert m50[1].startswith('│ ctx ▰▱▱▱▱▱▱▱▱▱ 11% 111k/1M') and m50[2].startswith('│ 5h ▰▰▰▰▱▱▱▱▱▱ 42%') and m50[3].startswith('│ week ▰▰▰▰▰▰▰▰▰▰ 97%'), m50
+assert m50[1].startswith('│ ctx ▰▱▱▱▱▱▱▱▱▱ 11% 111k/1M') and m50[2].startswith('│ 5h ▰▰▰▰▱▱▱▱▱▱ 43%') and m50[3].startswith('│ week ▰▰▰▰▰▰▰▰▰▰ 98%'), m50
 assert len(row({'rows': []})) == 2 and len(row({'rows': [['mem']]})) == 3 and len(row({'rows': [['mem'], [], ['ctx']]})) == 5
 narrow_top = row({'top_right': ['cost', 'time', 'clock']}, 40)[0]
 assert '$123.46' in narrow_top and clock not in narrow_top, narrow_top
@@ -306,6 +341,22 @@ with tempfile.TemporaryDirectory() as t:
     run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(), capture_output=True,
                          env={**env, 'SESSION_BAR_CONFIG': os.path.join(t, 'c.json')})
     assert run.returncode == 0 and run.stdout.decode().count('\n') == 3 and not run.stderr, run
+
+# while Remote Control is on (bridgeSessionId in this session's process file), the script's card is 4 columns
+# narrower, from 60 columns up, whatever the terminal's width
+with tempfile.TemporaryDirectory() as t:
+    os.makedirs(os.path.join(t, '.claude', 'sessions'))
+
+    def first_line_width(rec):
+        with open(os.path.join(t, '.claude', 'sessions', f'{os.getpid()}.json'), 'w') as f:
+            json.dump({'sessionId': FULL['session_id'], 'pid': os.getpid(), **rec}, f)
+        run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(),
+                             capture_output=True, env={**env, 'HOME': t})
+        assert run.returncode == 0 and not run.stderr, run
+        return len(ANSI.sub('', run.stdout.decode().split('\n')[0]))
+
+    off, on = first_line_width({}), first_line_width({'bridgeSessionId': 'session_01X'})
+    assert off - on == (4 if off >= 56 else 0), (off, on)
 
 F = 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'
 assert sb.env_flag(b'A=1\0' + F.encode() + b'=1\0', F) is True and sb.env_flag(F.encode() + b'=true\0', F) is True

@@ -1,12 +1,8 @@
 # Claude Skin: notes
 
 This project customizes how Claude Code looks. It started inside the codewiki sessions on 2026-10-18 and moved here
-the same day as `~/session-bar`. It was renamed `~/claude-skin` once the scope grew beyond the status line.
-
-| Part | State |
-|---|---|
-| **Session Bar** (`session-bar.py`), the status line card | live |
-| **The agents window**, the `/workflows` panel: Phases, agents, the key hints | theme `custom:workflows-card` live; agent meters: not doable without a mod, closed |
+the same day as `~/session-bar`, then was renamed `~/claude-skin`. On 2026-10-19 the user narrowed it to the Session
+Bar alone: the agents window's theme, its notes and the idea of a live agents dashboard were removed.
 
 The Session Bar is a rounded card with segmented heat-coloured meters and the footer's states on its bottom edge. It
 is Python 3 stdlib only, runs with `python3 -I -S`, and one run takes about 20 ms.
@@ -21,7 +17,7 @@ is Python 3 stdlib only, runs with `python3 -I -S`, and one run takes about 20 m
 | Preview of the chips with sample states | `python3 -I preview/chips.py` |
 
 Live use: `statusLine.command` in `~/.claude/settings.json` points at `session-bar.py` in this folder, with
-`"padding": 0` and `"refreshInterval": 5`.
+`"padding": 0` and `"refreshInterval": 1`.
 
 ## The card
 
@@ -50,6 +46,11 @@ follows a window resize within a second: Claude Code reruns the command on its t
 resize.
 
 No element costs tokens: the status line's output never reaches the model.
+
+5h and week show 1 point more than the payload, up to 100. The payload's figure comes from the headers of this
+session's last response, and it trails claude.ai and `/usage`: on 2026-10-19 the card said 23% and 72% where
+`/usage`, which rounds down, said 24% and 73%. The offset is the user's choice: an estimate, so right after a reset
+the card shows 1%. Spend is shown as it comes.
 
 | Place | Elements (the default ones in bold) |
 |---|---|
@@ -122,6 +123,12 @@ not grep: the local grep is ugrep and refuses wide patterns.
   width less 4 (`card_width`). The notifications share that row, which wraps (`flexWrap`), so they go under a
   full-width card. Until 2026-10-18 the card left 40 columns free past 60 % context, a rule copied from
   ccstatusline.
+- **Beside `/rc`:** the footer row is `flexWrap: "wrap"`, `alignItems: "flex-start"`, `columnGap: 1`; its right
+  column (`marginLeft: "auto"`) holds the notifications, then the pill. While Remote Control is on, the card is 4
+  columns narrower (`RC_PILL`, from 60 columns up, where Claude Code shows the pill: `Tbn=60`), so the pill sits
+  beside the card's top edge (2.1.303). A notification, or a longer label (`/rc active` for the first 5 sightings,
+  counted in `seenNotifications`; reconnecting states), makes that column wider, and it wraps under the card again
+  until it goes.
 - **What a configured status line hides:** `? for shortcuts`, `esc to interrupt` and the ctrl+t hints.
 
 ### Hiding native items
@@ -144,31 +151,6 @@ not grep: the local grep is ugrep and refuses wide patterns.
   the model table), not `context_window_size`. Formula (`qqe`): warn at threshold − 20k, where threshold = effective
   window − 13k.
 
-### Custom themes
-
-- Each theme is `~/.claude/themes/<slug>.json`: `{"name", "base", "overrides"}`.
-- One is turned on with `"theme": "custom:<slug>"`.
-- There are 72 colour tokens.
-- Tried on 2026-10-18 as `~/.claude/themes/session-bar.json`. The user saw no difference: it was never turned on and
-  changed only tokens near their defaults. It is still there and not active, beside `workflows-quiet.json` (theme B).
-- **Live since 2026-10-18:** `custom:workflows-card` (theme C1), in the Session Bar's colours: `text` rgb(92,92,92),
-  `permission` rgb(217,119,87), `success` rgb(63,185,80), `error` rgb(248,81,73), `subtle` rgb(124,128,146),
-  `inactive` rgb(176,180,196).
-- **How tokens reach the screen:**
-  - `dimColor` is not SGR faint at truecolor: the themed Text swaps the colour for the token `inactive`.
-  - Text with no colour gets no SGR at all: it stays the terminal's foreground, and no theme reaches it.
-  - Bold and italic are fixed SGR codes.
-- **Tokens are global:**
-  - `text` also draws the user's own prompts in the transcript (`MGt`), on `userMessageBackground` (55,55,55), and
-    the `●` before Claude's replies. With C1's rgb(92,92,92) a prompt is at 1.8:1; the user chose it knowing that.
-  - `permission` also colours inline code in replies and the frame of dialogs.
-  - `inactive` colours every dim text in the app.
-- **Loading:**
-  - `BZt` keeps an override only for a key the base has and a value `z5` accepts: `rgb(r,g,b)`, `#hex`,
-    `ansi256(n)` or `ansi:<name>`.
-  - The themes folder is watched live, but only if it existed when the session started.
-  - The `theme` setting is read once, at start (hypothesis); `/theme` switches live.
-
 ## Backups
 
 - `~/.claude/settings.json.bak-2026-10-18-before-session-bar`: before the Session Bar replaced ccstatusline.
@@ -178,71 +160,5 @@ not grep: the local grep is ugrep and refuses wide patterns.
 - `~/.claude/settings.json.bak-2026-10-18-before-theme`: before `theme` became `custom:workflows-quiet`.
 - `~/.claude/settings.json.bak-2026-10-18-before-theme-card`: before it became `custom:workflows-card`.
 - `~/.claude/settings.json.bak-2026-10-18-before-refresh-1s`: before `refreshInterval` went from 5 to 1.
+- `~/.claude/settings.json.bak-2026-10-19-before-theme-revert`: before `theme` went back to `dark`.
 - `~/.claude/statusline/`: the card as it was before this folder, plus its `.bak-2026-10-18-before-chips` copies.
-
-## The agents window (the `/workflows` panel)
-
-Reference screenshot: `~/Pictures/Screenshots/footer.png`. The panel is `stt` (`Ca("workflow-detail-dialog")`); `hwt`
-next to it is the save dialog. Read in 2.1.302 on 2026-10-18 and checked against the screenshot's pixels.
-
-| What shows | Token |
-|---|---|
-| frame, corners, box titles, the rule above the title | `text` |
-| title (bold), selected phase, `❯`, blocked `✘` | `permission` |
-| done `✔` | `success` |
-| failed `✘` | `error` |
-| phase numbers, unselected counts, running `●`, queued `◌`, skipped `✘` | `subtle` (dark: 80,80,80, 1.8:1) |
-| description, counter, models, a not-started phase, hints (also italic) | `inactive`, through `dimColor` |
-| a running phase's title, finished agents' labels | none: the terminal's foreground |
-
-### What can and cannot change
-
-- **A theme recolours it, nothing more.**
-- **A patch is ruled out.** To test whether an edit to the JS in the binary would run, the experiment needs a copy of
-  the binary. The auto-mode classifier blocked even that copy as self-modification, and every update would undo a
-  patch anyway.
-- **What mods can draw:** `RenderComponent` lists AskUserQuestion, UserMessage, AssistantMessage, ToolUse,
-  ToolResult, ToolGroup, ToolProgress, CommandOutput, Spinner, TurnDuration, InfoNotice, SessionMode, PromptHint,
-  AbovePrompt and Pane.
-  - Neither the panel nor the workflow row under the prompt is on that list, so no mod can redraw them.
-  - The nearest seats: `AbovePrompt`, a band of several rows right above the input, and `PromptHint`, the dim hint
-    line under it.
-- **Claude Code's own bar:** the workflow row under the prompt already carries a `▰▱` bar (done/total, 20 cells). It
-  takes no theme token: the fill is the terminal's foreground, the rest dim.
-- **The status line during the panel:**
-  - When `/workflows` is opened while idle, or from the pill, the prompt is unmounted, the status line with it, and
-    its command stops running.
-  - It stays on screen only when `/workflows` is opened mid-turn.
-
-### Agent meters: the data, and an open decision
-
-The user wants the agents' meters (one segment per agent, a context meter per running agent) in the footer where
-the runs show, not in the Session Bar.
-- **Tried and removed:** on 2026-10-18 they were built as Session Bar rows, then removed at the user's word.
-  Its preview and the others of that day were deleted too.
-- **Not mods, zero tokens, not built:**
-  - a separate monitor in a terminal split that draws the panel's frame from the run's files;
-  - `subagentStatusLine` (settings), whose script draws each Agent-tool subagent's row in the footer task list.
-    It gets `tokenCount`, `contextWindowSize` and the label, and its output replaces the row after the status
-    circle. Workflow agents are not covered.
-- **Closed on 2026-10-18:** the user wants no mods, because they burned through tokens. Do not propose them
-  again. Without a mod there are no meters, so the theme is all the agents window gets.
-
-What a reader can rely on (`P` = transcript_path without `.jsonl`; the status line payload has no workflow fields):
-- **Files:**
-  - Each run: `P/subagents/workflows/<runId>/journal.jsonl`, `agent-<id>.meta.json` (its mtime is the agent's start)
-    and `agent-<id>.jsonl`.
-  - The end snapshot: `P/workflows/<runId>.json`.
-  - The script copy: `P/workflows/scripts/<slug>-<runId>.js`, which holds `meta.phases`; inline and named runs
-    only.
-- **Journal lines:**
-  - `started{key,agentId,label,phase}` comes at spawn, never while queued.
-  - `result{key,...}` means done; `failed{key,agentId}`, with agentId `""` when the agent never started.
-  - A retry appends `started` again under the same key. There are no timestamps and no end event.
-- **Live:**
-  - The journal was written after the process started (`startedAt` in `~/.claude/sessions/<pid>.json`).
-  - No snapshot is newer than it: the snapshot comes about 20 ms after the last line, and pause and stop count as
-    killed.
-  - Something was written recently: a crash leaves no snapshot.
-- **Tokens:** the last assistant `usage` (input + cache creation + cache read + output) in a 256 KB tail of the
-  agent's jsonl. The context window is known only for the session's own model.
