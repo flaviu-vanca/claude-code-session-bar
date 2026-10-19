@@ -416,8 +416,8 @@ def element(name, x):
     if name == 'effort':
         level = (d.get('effort') or {}).get('level')
         return [dim(level)] if level else []
-    if name == 'thinking':
-        return [dim('thinking')] if (d.get('thinking') or {}).get('enabled') else []
+    if name == 'thinking':  # while Claude works out its next step (h, from main); the mode alone is always on in Opus 5.5
+        return [P('∴ ', PURPLE), dim('thinking')] if h.get('thinking') and (d.get('thinking') or {}).get('enabled') else []
     if name == 'style':
         style = (d.get('output_style') or {}).get('name')
         return [dim(f'style {style}')] if style and style.lower() != 'default' else []
@@ -610,6 +610,28 @@ def last_permission_mode(transcript, tail=262144):
     return None
 
 
+def last_speaker(transcript, tail=262144):
+    """Who spoke last in the transcript, 'user' (a prompt or a tool's result) or 'assistant', read from its tail;
+    other entries and side chains do not count. Claude Code writes a message once it is whole, so while the user
+    spoke last, Claude is at work on its next step: thinking, then writing it."""
+    try:
+        with open(transcript, 'rb') as f:
+            f.seek(max(0, os.fstat(f.fileno()).st_size - tail))
+            lines = f.read().split(b'\n')
+    except (OSError, TypeError):
+        return None
+    for line in reversed(lines):
+        if b'"type":"user"' not in line and b'"type":"assistant"' not in line:
+            continue
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get('type') in ('user', 'assistant') and not e.get('isSidechain'):
+            return e['type']
+    return None
+
+
 def count_json(folder):
     """How many .json files a folder holds: the feedback drafts waiting for review."""
     try:
@@ -695,6 +717,8 @@ def main():
              'mode': last_permission_mode(d.get('transcript_path')) if 'mode' in edge else None,
              'drafts': count_json(os.path.join(home, '.claude', 'feedback', 'drafts')) if 'drafts' in edge else 0}
         notices = update_ready(s['newest'], d.get('version')) or idle_hint(rec, d, env, now)
+        if 'thinking' in cfg['top_left'] + cfg['top_right'] + [n for r in cfg['rows'] for n in r]:
+            h['thinking'] = s['busy'] and last_speaker(d.get('transcript_path')) == 'user'
         cs = chips(d, s, now, edge)
     except (TypeError, ValueError, AttributeError):  # a payload or session file of another shape costs the chips, not the card
         cs = []

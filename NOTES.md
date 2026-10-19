@@ -70,6 +70,18 @@ the card shows 1%. Spend is shown as it comes.
 By default the top left holds model and effort, the top right cost and time, row 1 ctx, 5h and week, and row 2
 repo, cwd, session, mem and disks. `repo` shows only inside a repository; `cwd` always shows.
 
+`thinking` shows `∴ thinking` while Claude works out its next step: the session file says `busy` and the transcript's
+last message is the user's or a tool's result (`last_speaker`, from the last 256 KB). Claude Code writes a message
+only once it is whole, so the element goes when the step's first block lands, and stays off while a tool runs or
+Claude waits. Read in 2.1.303:
+- the payload's `thinking.enabled` is the mode only: on unless turned off (`/config`, which writes
+  `alwaysThinkingEnabled: false`, or `MAX_THINKING_TOKENS=0`), and always on for a model with
+  `rejects_disabled_thinking`, Opus 5.5 among them. Until 2026-10-19 the element showed that, so it never changed;
+- Opus 5.5 also has `adaptive_thinking`: it decides at each step whether to think, so on a step without thinking
+  the element shows while Claude writes;
+- the session file's `status` is `busy`, `waiting` or `idle`, nothing finer;
+- the transcript keeps a thinking block's signature, not its text, unless `showThinkingSummaries` is on.
+
 ## Chips that Claude Code also shows
 
 The user asked what a chip is worth when the native one under the card cannot be hidden. I proposed keeping on the

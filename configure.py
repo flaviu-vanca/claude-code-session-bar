@@ -28,7 +28,7 @@ MAX_BODY = 64 * 1024
 LOCK = threading.Lock()  # use_palette sets the card's colours for the whole module
 
 WHAT = {
-    'model': "the model's name", 'effort': 'the effort level', 'thinking': '"thinking" while extended thinking is on',
+    'model': "the model's name", 'effort': 'the effort level', 'thinking': '"∴ thinking" while Claude works out its next step: thinks, then writes it',
     'style': 'the output style, when it is not the default', 'agent': 'the agent the session runs as (--agent)',
     'name': 'the session name set with /rename', 'version': "Claude Code's version", 'cost': "the session's cost",
     'time': "the session's wall time", 'api': 'the time spent waiting on the API', 'lines': 'lines added and removed',
@@ -98,6 +98,11 @@ def states(rc):
     return {**STATES, 'rc': STATES['rc'] if rc else None}
 
 
+def host():
+    """This machine, for the sample session, which is mid-step: Claude works out its next one, so "thinking" shows."""
+    return {**sb.host(HERE), 'thinking': True}
+
+
 def plain(pieces):
     return [[t, rgb, dim, bold] for t, rgb, dim, bold, _ in pieces]
 
@@ -107,7 +112,7 @@ def render(cfg, columns, rc, d):
     with LOCK:
         sb.use_palette(cfg['palette'])
         now, width = time.time(), sb.card_width(columns, rc)
-        lines = sb.card(d, width, now, sb.host(HERE), cfg['meter'], sb.chips(d, states(rc), now, cfg['edge']), cfg)
+        lines = sb.card(d, width, now, host(), cfg['meter'], sb.chips(d, states(rc), now, cfg['edge']), cfg)
     return {'width': width, 'lines': [plain(line) for line in lines]}
 
 
@@ -121,7 +126,7 @@ def previews(cfg, d):
     """Every element as the card draws it on the sample, for the page's tiles."""
     with LOCK:
         sb.use_palette(cfg['palette'])
-        now, h = time.time(), sb.host(HERE)
+        now, h = time.time(), host()
         out = {name: plain(alone(cfg, [name], d, now, h)) for name in sb.TEXT + sb.METERS}
         for name in sb.CHIPS:
             g = sb.chips(d, states(True), now, [name])

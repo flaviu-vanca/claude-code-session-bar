@@ -240,7 +240,7 @@ RICH = {**ALL_D, 'session_name': 'skin work', 'output_style': {'name': 'Explanat
         'workspace': {**FULL['workspace'], 'added_dirs': ['/a', '/b']}, 'worktree': {'name': 'feat', 'branch': 'feat'},
         'rate_limits': {**FULL['rate_limits'], 'spend_limit': {'used_percentage': 30, 'resets_at': NOW + 86_400, 'used_usd': 15, 'limit_usd': 50}},
         'prompt_cache': {'warm': True, 'expires_at': NOW + 3000, 'hit_ratio': 0.92}}
-RHOST = {**HOST, 'load': (1.2, 8), 'battery': (81, True)}
+RHOST = {**HOST, 'load': (1.2, 8), 'battery': (81, True), 'thinking': True}
 RS = {**ALL_S, 'mode': 'auto', 'drafts': 3}
 for d in (RICH, {}):
     for w in range(30, 241):
@@ -250,7 +250,12 @@ for d in (RICH, {}):
         assert all(line[0] == '│' and line[-1] == '│' for line in lines[1:-1]), lines
 rich = [ANSI.sub('', sb.paint(line)) for line in sb.card(RICH, 240, NOW, RHOST, 10, sb.chips(RICH, RS, NOW, sb.CHIPS), ALL_CFG)]
 clock = time.strftime('%H:%M', time.localtime(NOW))
-assert '╭─ ✻ Opus 5.5 · max · thinking · style Explanatory · @reviewer · skin work · v2.1.302 ─' in rich[0], rich[0]
+assert '╭─ ✻ Opus 5.5 · max · ∴ thinking · style Explanatory · @reviewer · skin work · v2.1.302 ─' in rich[0], rich[0]
+# "thinking" shows while Claude works out its next step (the host's live flag, set by main), and only in thinking
+# mode: the mode alone says nothing, Opus 5.5 cannot turn it off
+top = lambda d, h: ANSI.sub('', sb.paint(sb.card(d, 240, NOW, h, 10, (), {**sb.DEFAULT, 'top_left': ['model', 'thinking']})[0]))
+assert '✻ Opus 5.5 · ∴ thinking ─' in top(RICH, RHOST) and 'thinking' not in top(RICH, HOST), top(RICH, RHOST)
+assert 'thinking' not in top({**RICH, 'thinking': {'enabled': False}}, RHOST)
 assert f'─ $123.46 · ◷ 2h36m · api 1h0m · +120 -30 · {clock} ─╮' in rich[0], rich[0]
 assert 'spend ▰▰▰▱▱▱▱▱▱▱ 30% $15/$50 ↻24h0m' in rich[1] and 'hits ▰▰▰▰▰▰▰▰▰▱ 92%' in rich[1], rich[1]
 assert '│ ⌂ /home/u/codewiki · # af9b34f1 · wt feat · +2 dirs · mem 3.2/7.5G · /tmp 12% · ~/.cache 64% · load 1.2 · bat 81%+ ' in rich[2], rich[2]
@@ -324,6 +329,41 @@ with tempfile.TemporaryDirectory() as t:
     os.makedirs(os.path.join(t, '.local', 'share', 'claude', 'versions', '9.9.9'))
     assert first_line_width({}, {**FULL, 'version': '2.1.302'}) == beside, 'an update installed makes the same room'
 
+# who spoke last in a transcript, read from its tail: Claude Code writes a message once it is whole, so while the user
+# or a tool's result spoke last, Claude is at work on its next step; other entries and side chains do not count
+PROMPT, RESULT = {'type': 'user', 'message': {'content': 'hi'}}, {'type': 'user', 'message': {'content': [{'type': 'tool_result'}]}}
+THOUGHT, CALL = [{'type': 'assistant', 'message': {'content': [{'type': k}]}} for k in ('thinking', 'tool_use')]
+line = lambda e: json.dumps(e, separators=(',', ':')) + '\n'  # as Claude Code writes them
+with tempfile.TemporaryDirectory() as t:
+    path = os.path.join(t, 's.jsonl')
+    for entries, tail, who in (([PROMPT, THOUGHT, RESULT], '', 'user'), ([PROMPT, THOUGHT], '', 'assistant'),
+                               ([THOUGHT, RESULT, {'type': 'system'}, {**CALL, 'isSidechain': True}], '{"type":"assist', 'user')):
+        with open(path, 'w') as f:
+            f.write(''.join(map(line, entries)) + tail)
+        assert sb.last_speaker(path) == who, (entries, who)
+    assert sb.last_speaker(os.path.join(t, 'none.jsonl')) is None and sb.last_speaker(None) is None
+
+# the script shows "∴ thinking" while the session is busy and the user or a tool spoke last
+with tempfile.TemporaryDirectory() as t:
+    os.makedirs(os.path.join(t, '.claude', 'sessions'))
+    conf, path = os.path.join(t, 'c.json'), os.path.join(t, 's.jsonl')
+    with open(conf, 'w') as f:
+        json.dump({'top_left': ['model', 'thinking']}, f)
+
+    def top_line(status, last):
+        with open(os.path.join(t, '.claude', 'sessions', f'{os.getpid()}.json'), 'w') as f:
+            json.dump({'sessionId': FULL['session_id'], 'pid': os.getpid(), 'status': status}, f)
+        with open(path, 'w') as f:
+            f.write(line(PROMPT) + line(last))
+        d = {**FULL, 'thinking': {'enabled': True}, 'transcript_path': path}
+        run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(d).encode(), capture_output=True,
+                             env={**env, 'HOME': t, 'SESSION_BAR_CONFIG': conf})
+        assert run.returncode == 0 and not run.stderr, run
+        return ANSI.sub('', run.stdout.decode().split('\n')[0])
+
+    assert '∴ thinking' in top_line('busy', RESULT), top_line('busy', RESULT)
+    assert 'thinking' not in top_line('busy', CALL) and 'thinking' not in top_line('idle', RESULT)
+
 F = 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'
 assert sb.env_flag(b'A=1\0' + F.encode() + b'=1\0', F) is True and sb.env_flag(F.encode() + b'=true\0', F) is True
 assert sb.env_flag(F.encode() + b'=0\0', F) is False and sb.env_flag(b'', F) is False
@@ -362,6 +402,7 @@ pv = web.previews(c, d)
 flat = lambda pieces: ''.join(p[0] for p in pieces)
 assert set(pv) == set(sb.TEXT + sb.METERS + sb.CHIPS), set(pv) ^ set(sb.TEXT + sb.METERS + sb.CHIPS)
 assert flat(pv['ctx']).startswith('ctx ▰') and flat(pv['repo']).startswith('⎇ ') and flat(pv['rc']).endswith('rc'), pv['rc']
+assert flat(pv['thinking']) == '∴ thinking', pv['thinking']  # the sample session is mid-step
 H = {'127.0.0.1:8790'}
 assert web.trusted('127.0.0.1:8790', None, 'GET', H) and web.trusted('127.0.0.1:8790', 'http://127.0.0.1:8790', 'POST', H)
 assert not web.trusted('evil.example:8790', None, 'GET', H) and not web.trusted('127.0.0.1:8790', 'http://evil.example', 'POST', H)
