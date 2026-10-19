@@ -70,8 +70,9 @@ the card shows 1%. Spend is shown as it comes.
 By default the top left holds model and effort, the top right cost and time, row 1 ctx, 5h and week, and row 2
 repo, cwd, session, mem and disks. `repo` shows only inside a repository; `cwd` always shows.
 
-`repo` links its name to the branch's page on origin, the address from `.git/config` with any credentials dropped,
-and marks the branch ahead of origin's (`⇡`), behind (`⇣`) or apart (`⇅`). Without running git that comes from
+`repo` links its name to the branch's page on origin, from the payload's `workspace.repo` (host, owner, name: Claude
+Code reads the remote itself, `kR` in 2.1.303, credentials dropped and remotes on disk left out), and marks the branch
+ahead of origin's (`⇡`), behind (`⇣`) or apart (`⇅`). Without running git that comes from
 the reflogs (the last 64 KB of each): the branch that once stood where the other stands now is the one that moved
 on. A fetch moves origin's branch, so `⇣` shows what the last fetch brought.
 
@@ -79,6 +80,14 @@ The cache chip adds, in brackets, the payload's `prompt_cache.recache_tokens_if_
 once the cache is gone (Claude Code's own estimate, 2.1.303). `miss` shows for 5 minutes after the cache missed
 (`last_miss_at`), with the first of `last_miss_cause.causes` in short words: Claude Code's causes and its own words
 for them are in `RLs` (system prompt, tools, model, effort, idle past the 5m or 1h TTL, server side, and others).
+
+The cache's lifetime (Claude Code's docs, prompt-caching and settings-reference, read through Context7 on
+2026-10-19): on a Claude subscription within the plan, the main conversation gets 1 hour and everything else 5
+minutes; on usage credits Claude Code drops the main conversation to 5 minutes. `promptCacheTtl: "1h"` in
+`~/.claude/settings.json` keeps the hour there too, set 2026-10-19: a 1-hour write costs 2x the input price against
+1.25x, a read 0.1x, and one rebuild of a large context costs far more than the extra on each turn's new part. This
+session's transcript showed only 1-hour writes. `subagentPromptCacheTtl` stays unset: subagents rarely pause 5
+minutes between steps.
 
 `thinking` shows `∴ thinking` while Claude works out its next step: the session file says `busy` and the transcript's
 last message is the user's or a tool's result (`last_speaker`, from the last 256 KB). Claude Code writes a message
@@ -202,4 +211,5 @@ not grep: the local grep is ugrep and refuses wide patterns.
 - `~/.claude/settings.json.bak-2026-10-18-before-theme-card`: before it became `custom:workflows-card`.
 - `~/.claude/settings.json.bak-2026-10-18-before-refresh-1s`: before `refreshInterval` went from 5 to 1.
 - `~/.claude/settings.json.bak-2026-10-19-before-theme-revert`: before `theme` went back to `dark`.
+- `~/.claude/settings.json.bak-2026-10-19-before-prompt-cache-ttl`: before `promptCacheTtl` became `1h`.
 - `~/.claude/statusline/`: the card as it was before this folder, plus its `.bak-2026-10-18-before-chips` copies.

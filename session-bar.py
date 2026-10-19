@@ -294,30 +294,14 @@ def git_info(cwd):
     return os.path.basename(top), head[16:] if head.startswith('ref: refs/heads/') else head[:7]
 
 
-def web_link(url, branch):
-    """A remote's address as an https page, of the branch if given; credentials dropped; None for a remote on disk."""
-    u = url[:-4] if url.endswith('.git') else url
-    if u.startswith('git@') and ':' in u:
-        host_, _, path = u[4:].partition(':')
-    elif u.startswith(('ssh://', 'https://', 'http://')):
-        host_, _, path = u.split('://', 1)[1].rpartition('@')[2].partition('/')
-        host_ = host_.split(':')[0]
-    else:
-        return None
-    return f'https://{host_}/{path}' + (f'/tree/{branch}' if branch else '') if host_ and path else None
-
-
-def git_remote(cwd, branch):
-    """The branch's page on origin, from .git/config, and whether the branch is ahead of origin's (⇡), behind (⇣) or
-    apart (⇅), told without running git: each branch's reflog keeps where it stood, and the branch that once stood
-    where the other stands now is the one that moved on."""
-    _, gitdir = git_dir(cwd)
-    shared = os.path.join(gitdir, 'commondir')  # a worktree keeps config, refs and logs in the main git folder
-    common = os.path.join(gitdir, head_of(shared).strip()) if os.path.isfile(shared) else gitdir
-    m = re.search(r'\[remote "origin"\][^\[]*?^\s*url\s*=\s*(\S+)', head_of(os.path.join(common, 'config'), 65536), re.M)
-    url = web_link(m.group(1), branch) if m else None
+def git_sync(cwd, branch):
+    """Whether the branch is ahead of origin's (⇡), behind (⇣) or apart (⇅), told without running git: each branch's
+    reflog keeps where it stood, and the branch that once stood where the other stands now is the one that moved on."""
     if not branch or '..' in branch or not re.fullmatch(r'[\w./-]+', branch):
-        return url, None
+        return None
+    _, gitdir = git_dir(cwd)
+    shared = os.path.join(gitdir, 'commondir')  # a worktree keeps its refs and logs in the main git folder
+    common = os.path.join(gitdir, head_of(shared).strip()) if os.path.isfile(shared) else gitdir
 
     def sha(ref):
         try:
@@ -338,9 +322,9 @@ def git_remote(cwd, branch):
 
     local, there = sha(f'refs/heads/{branch}'), sha(f'refs/remotes/origin/{branch}')
     if not local or not there or local == there:
-        return url, None
+        return None
     ahead, behind = there in stood(f'refs/heads/{branch}'), local in stood(f'refs/remotes/origin/{branch}')
-    return url, '⇡' if ahead and not behind else '⇣' if behind and not ahead else '⇅'
+    return '⇡' if ahead and not behind else '⇣' if behind and not ahead else '⇅'
 
 
 def host(project):
@@ -527,9 +511,12 @@ def element(name, x):
     if name == 'repo':  # linked to the branch on origin; ⇡ ⇣ ⇅ for ahead of it, behind it, apart from it
         if not x['repo']:
             return []
-        url, sync = x['remote'] or (None, None)
-        return ([P(f"⎇ {x['repo']}", dim=True, link=url)] + ([dim(f" {x['branch']}")] if x['branch'] else [])
-                + ([P(f' {sync}', YELLOW)] if sync else []))
+        origin = (d.get('workspace') or {}).get('repo') or {}  # Claude Code's reading of the remote: host, owner, name
+        parts, branch = [origin.get(k) for k in ('host', 'owner', 'name')], x['branch']
+        url = 'https://' + '/'.join(parts) + (f'/tree/{branch}' if branch and re.fullmatch(r'[\w./-]+', branch) else '') \
+            if all(isinstance(v, str) and re.fullmatch(r'[\w.:-]+', v) for v in parts) else None
+        return ([P(f"⎇ {x['repo']}", dim=True, link=url)] + ([dim(f' {branch}')] if branch else [])
+                + ([P(f" {x['sync']}", YELLOW)] if x['sync'] else []))
     if name == 'cwd':
         return [dim(f"⌂ {tilde(x['cwd'], x['home'])}")]
     if name == 'session':
@@ -570,7 +557,7 @@ def card(d, width, now, h, meter=10, chips=(), cfg=None):
     repo, branch = git_info(cwd) if 'repo' in texts else (None, None)
     x = {'d': d, 'h': h, 'now': now, 'model': model_name(m_.get('id'), m_.get('display_name')), 'cwd': cwd,
          'home': os.path.expanduser('~'), 'repo': repo, 'branch': branch,
-         'remote': safe(git_remote, cwd, branch) if repo else None}
+         'sync': safe(git_sync, cwd, branch) if repo else None}
     pieces = lambda place: [g for g in (safe(element, n, x) for n in cfg[place]) if g]
 
     # the top edge: drops its right elements from the end, then its left ones but the first, then cuts that one

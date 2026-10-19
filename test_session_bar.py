@@ -170,18 +170,13 @@ with tempfile.TemporaryDirectory() as t:
         f.write('ref: refs/heads/' + 'b' * 100_000)
     assert 0 < len(sb.git_info(t)[1]) <= 256, 'only the start of HEAD is read'
 
-# the repository's page on origin, credentials dropped; none for a remote on disk
-assert sb.web_link('git@github.com:o/r.git', 'main') == 'https://github.com/o/r/tree/main'
-assert sb.web_link('https://user:tok@gitlab.com/o/r.git', 'dev') == 'https://gitlab.com/o/r/tree/dev'
-assert sb.web_link('ssh://git@host.example:2222/o/r.git', '') == 'https://host.example/o/r'
-assert sb.web_link('/srv/git/r.git', 'main') is None
 # the branch ahead of origin's (⇡), behind (⇣) or apart (⇅), told by the reflogs: the branch that once stood where
 # the other stands now is the one that moved on
 A, B, C = 'a' * 40, 'b' * 40, 'c' * 40
 
 
-def repo_at(t, local, there, local_log, there_log, packed=False, origin='git@github.com:o/r.git'):
-    files = {'HEAD': 'ref: refs/heads/main\n', 'config': f'[core]\n\tbare = false\n[remote "origin"]\n\turl = {origin}\n',
+def repo_at(t, local, there, local_log, there_log, packed=False):
+    files = {'HEAD': 'ref: refs/heads/main\n',
              'logs/refs/heads/main': ''.join(f'{"0" * 40} {s} u <u> 1 +0000\tx\n' for s in local_log),
              'logs/refs/remotes/origin/main': ''.join(f'{"0" * 40} {s} u <u> 1 +0000\tx\n' for s in there_log)}
     if packed:
@@ -192,20 +187,26 @@ def repo_at(t, local, there, local_log, there_log, packed=False, origin='git@git
         os.makedirs(os.path.dirname(os.path.join(t, '.git', path)), exist_ok=True)
         with open(os.path.join(t, '.git', path), 'w') as f:
             f.write(text)
-    return sb.git_remote(t, 'main')
+    return sb.git_sync(t, 'main')
 
 
 for packed in (False, True):
     for local, there, local_log, there_log, sync in ((B, A, [A, B], [A], '⇡'), (A, B, [A], [A, B], '⇣'),
                                                        (B, C, [A, B], [A, C], '⇅'), (A, A, [A], [A], None)):
         with tempfile.TemporaryDirectory() as t:
-            assert repo_at(t, local, there, local_log, there_log, packed) == ('https://github.com/o/r/tree/main', sync), sync
+            assert repo_at(t, local, there, local_log, there_log, packed) == sync, sync
+# the repository's name links to the branch on origin, from the payload's workspace.repo: Claude Code reads the
+# remote itself, credentials dropped and remotes on disk left out
 with tempfile.TemporaryDirectory() as t:
-    assert repo_at(t, B, A, [A, B], [A], origin='/srv/git/r.git') == (None, '⇡'), 'a remote on disk has no page'
+    repo_at(t, B, A, [A, B], [A])
     sub = os.path.join(t, 'src')
     os.mkdir(sub)
-    line = sb.card({**FULL, 'workspace': {'current_dir': sub}}, 120, NOW, HOST, 10, (), {**sb.DEFAULT, 'rows': [['repo']]})[1]
+    repo_line = lambda ws: sb.card({**FULL, 'workspace': {'current_dir': sub, **ws}}, 120, NOW, HOST, 10, (),
+                                   {**sb.DEFAULT, 'rows': [['repo']]})[1]
+    line = repo_line({'repo': {'host': 'github.com', 'owner': 'o', 'name': 'r'}})
     assert ''.join(p[0] for p in line).startswith(f'│ ⎇ {os.path.basename(t)} main ⇡ '), line
+    assert [p[4] for p in line if p[4]] == ['https://github.com/o/r/tree/main'], line
+    assert not any(p[4] for p in repo_line({})) and not any(p[4] for p in repo_line({'repo': {'host': 'a b', 'owner': 'o', 'name': 'r'}}))
 
 
 with tempfile.TemporaryDirectory() as t:
