@@ -95,6 +95,7 @@ VERSION = re.compile(r'^\d+(\.\d+)+$')
 DISKS = ['/tmp', '~/.cache']  # the tmpfs and the scratch disk
 FOOTER_PADDING = 2  # columns Claude Code's footer row keeps on each side of the status line (oQe); its notes wrap below
 RC_PILL = len(' /rc')  # Claude Code's /rc pill and the gap before it (columnGap 1), shown from 60 columns (Tbn)
+NOTICE = len('✔ Update installed · Restart to update')  # Claude Code's widest notice; its idle /clear hint is as wide
 CONFIG = os.environ.get('SESSION_BAR_CONFIG') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'session-bar.json')
 # what each place can hold: text on the top edge, anything but chips on a row, chips on the bottom edge
 TEXT = ['model', 'effort', 'thinking', 'style', 'agent', 'name', 'version', 'cost', 'time', 'api', 'lines', 'clock',
@@ -199,10 +200,15 @@ def tilde(path, home):
     return '~' + path[len(home):] if home and (path == home or path.startswith(home + '/')) else path
 
 
-def card_width(columns, rc=False):
+def card_width(columns, rc=False, notices=False):
     """The card's width: the footer's, the terminal less its padding on both sides; 30 at the least. While Remote
-    Control is on it also leaves room for the /rc pill, which then sits beside the card's top edge, not under it."""
-    return max(30, columns - 2 * FOOTER_PADDING - (RC_PILL if rc and columns >= 60 else 0))
+    Control is on it also leaves room for the /rc pill, which then sits beside the card's top edge, not under it.
+    While Claude Code shows a notice beside the card, it leaves room for the widest notice and the gap before it, the
+    pill going under the notices, as long as the card keeps 80 columns; narrower, the notices go under the card."""
+    width = columns - 2 * FOOTER_PADDING
+    if notices and width - NOTICE - 1 >= 80:
+        return width - NOTICE - 1
+    return max(30, width - (RC_PILL if rc and columns >= 60 else 0))
 
 
 def terminal_columns():
@@ -355,8 +361,8 @@ def chip(name, d, s, now):
     if name == 'no_transcript':
         return [P('⚠ no transcript', RED, bold=True)] if s.get('no_transcript') else []
     if name == 'update':
-        newest, running = s.get('newest'), d.get('version') or ''
-        if newest and VERSION.match(running) and version_key(newest) > version_key(running):
+        newest = s.get('newest')
+        if update_ready(newest, d.get('version')):
             return [P(f'↑ {newest}', YELLOW, bold=True), P(' restart', dim=True)]
         return []
     if name == 'cache':
@@ -612,13 +618,42 @@ def count_json(folder):
         return 0
 
 
-def env_flag(raw, name):
-    """Whether `name` is on in a NUL-separated environment, read as Claude Code reads a boolean: 1, true, yes, on."""
+def env_value(raw, name):
+    """`name`'s value in a NUL-separated environment, or None."""
     for item in raw.split(b'\0'):
         key, _, value = item.partition(b'=')
         if key == name.encode():
-            return value.strip().lower() in (b'1', b'true', b'yes', b'on')
-    return False
+            return value.decode(errors='replace')
+    return None
+
+
+def env_flag(raw, name):
+    """Whether `name` is on in a NUL-separated environment, read as Claude Code reads a boolean: 1, true, yes, on."""
+    return (env_value(raw, name) or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def update_ready(newest, running):
+    """Whether a newer Claude Code than the running one is installed: the update chip, and the "Update installed ·
+    Restart to update" notice Claude Code shows until it restarts."""
+    return bool(newest and VERSION.match(running or '') and version_key(newest) > version_key(running))
+
+
+def idle_hint(rec, d, env, now):
+    """Whether Claude Code shows its idle hint, "new task? /clear to save … tokens": the session idle since its last
+    turn for CLAUDE_CODE_IDLE_THRESHOLD_MINUTES (75), with CLAUDE_CODE_IDLE_TOKEN_THRESHOLD (100k) tokens or more.
+    shortcut: the hint counts the conversation's tokens and this the context's, a few percent apart; near the
+    threshold they can disagree."""
+    def number(name, default):
+        try:
+            return float(env_value(env, name))
+        except (TypeError, ValueError):
+            return default
+
+    since = rec.get('statusUpdatedAt')
+    tokens = (d.get('context_window') or {}).get('total_input_tokens') or 0
+    return (rec.get('status') == 'idle' and isinstance(since, (int, float)) and not isinstance(since, bool)
+            and tokens >= number('CLAUDE_CODE_IDLE_TOKEN_THRESHOLD', 1e5)
+            and now - since / 1000 >= number('CLAUDE_CODE_IDLE_THRESHOLD_MINUTES', 75) * 60)
 
 
 def launch_env(pid):
@@ -648,21 +683,23 @@ def main():
     h, now, home = host(project), time.time(), os.path.expanduser('~')
     cfg = load_config(CONFIG)
     use_palette(cfg['palette'])
-    rc = None  # Remote Control's session, while it is on
+    rc, notices = None, False  # Remote Control's session, while it is on; whether a notice sits beside the card
     try:
         rec = session_record(d.get('session_id'), os.path.join(home, '.claude', 'sessions'))
         edge = cfg['edge']
         rc = rec.get('bridgeSessionId')
+        env = launch_env(rec.get('pid'))
         s = {'rc': rc, 'busy': rec.get('status') == 'busy', 'sandbox': h.get('sandbox'),
              'newest': newest_version(os.path.join(home, '.local', 'share', 'claude', 'versions')),
-             'no_transcript': env_flag(launch_env(rec.get('pid')), 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'),
+             'no_transcript': env_flag(env, 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'),
              'mode': last_permission_mode(d.get('transcript_path')) if 'mode' in edge else None,
              'drafts': count_json(os.path.join(home, '.claude', 'feedback', 'drafts')) if 'drafts' in edge else 0}
+        notices = update_ready(s['newest'], d.get('version')) or idle_hint(rec, d, env, now)
         cs = chips(d, s, now, edge)
     except (TypeError, ValueError, AttributeError):  # a payload or session file of another shape costs the chips, not the card
         cs = []
     meter = meter_arg(sys.argv) if '--meter' in sys.argv else cfg['meter']
-    lines = card(d, card_width(terminal_columns(), bool(rc)), now, h, meter, cs, cfg)
+    lines = card(d, card_width(terminal_columns(), bool(rc), notices), now, h, meter, cs, cfg)
     sys.stdout.buffer.write(''.join(paint(line) + '\n' for line in lines).encode())
 
 

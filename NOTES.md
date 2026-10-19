@@ -139,6 +139,14 @@ not grep: the local grep is ugrep and refuses wide patterns.
   beside the card's top edge (2.1.303). A notification, or a longer label (`/rc active` for the first 5 sightings,
   counted in `seenNotifications`; reconnecting states), makes that column wider, and it wraps under the card again
   until it goes.
+- **Beside the notices:** two notifications in that column can be foreseen, so the card makes room for them too: 39
+  columns (`NOTICE`, 38, and the gap), with `/rc` under them, as long as the card keeps 80 columns. Read in 2.1.303:
+  - `✔ Update installed · Restart to update`: the auto-updater succeeded, until a restart. The card takes a newer
+    version in `~/.local/share/claude/versions` than the payload's (`update_ready`), as for the update chip; only the
+    session that installed it shows the notice, so another open one makes room for nothing;
+  - `new task? /clear to save N tokens`: idle for `CLAUDE_CODE_IDLE_THRESHOLD_MINUTES` (75) since the last turn,
+    with `CLAUDE_CODE_IDLE_TOKEN_THRESHOLD` (100k) tokens or more, until the next activity. The card takes the session
+    file's `status: idle` and `statusUpdatedAt`, the context's tokens and the launch environment (`idle_hint`).
 - **What a configured status line hides:** `? for shortcuts`, `esc to interrupt` and the ctrl+t hints.
 
 ### Hiding native items

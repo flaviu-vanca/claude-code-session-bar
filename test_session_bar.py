@@ -54,6 +54,11 @@ assert sb.card_width(188) == 184 and sb.card_width(20) == 30
 # while Remote Control is on, the card leaves room for Claude Code's /rc pill and the gap before it, so the pill
 # sits beside the card's top edge; under 60 columns Claude Code hides the pill, so there is nothing to make room for
 assert sb.card_width(188, rc=True) == 180 and sb.card_width(60, rc=True) == 52 and sb.card_width(59, rc=True) == 55
+# while Claude Code shows a notice beside the card (an update installed, its idle /clear hint), the card leaves room for
+# the widest, 38 columns, and the gap, so the notices and the pill under them sit beside it, as long as the card keeps
+# 80 columns; narrower, they go under the card
+assert sb.card_width(188, rc=True, notices=True) == 145 and sb.card_width(188, notices=True) == 145
+assert sb.card_width(123, notices=True) == 80 and sb.card_width(122, notices=True) == 118 and sb.card_width(122, True, True) == 114
 assert sb.heat(0) == (0x3F, 0xB9, 0x50) and sb.heat(0.6) == (0xE3, 0xB3, 0x41) and sb.heat(1) == (0xF8, 0x51, 0x49)
 assert sb.model_name('claude-opus-5-5', None) == 'Opus 5.5'
 assert sb.model_name('claude-sonnet-5-5[1m]', None) == 'Sonnet 5.5 1M'
@@ -300,25 +305,39 @@ with tempfile.TemporaryDirectory() as t:
     assert run.returncode == 0 and run.stdout.decode().count('\n') == 3 and not run.stderr, run
 
 # while Remote Control is on (bridgeSessionId in this session's process file), the script's card is 4 columns
-# narrower, from 60 columns up, whatever the terminal's width
+# narrower, from 60 columns up, whatever the terminal's width; while a notice of Claude Code's sits beside it, 39
 with tempfile.TemporaryDirectory() as t:
     os.makedirs(os.path.join(t, '.claude', 'sessions'))
 
-    def first_line_width(rec):
+    def first_line_width(rec, d=FULL):
         with open(os.path.join(t, '.claude', 'sessions', f'{os.getpid()}.json'), 'w') as f:
             json.dump({'sessionId': FULL['session_id'], 'pid': os.getpid(), **rec}, f)
-        run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(),
-                             capture_output=True, env={**env, 'HOME': t})
+        run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(d).encode(),
+                             capture_output=True, env={**env, 'HOME': t, 'COLUMNS': '188'})
         assert run.returncode == 0 and not run.stderr, run
         return len(ANSI.sub('', run.stdout.decode().split('\n')[0]))
 
     off, on = first_line_width({}), first_line_width({'bridgeSessionId': 'session_01X'})
     assert off - on == (4 if off >= 56 else 0), (off, on)
+    beside = first_line_width({'status': 'idle', 'statusUpdatedAt': (time.time() - 80 * 60) * 1000})
+    assert off - beside == (39 if off >= 119 else 0), (off, beside)
+    os.makedirs(os.path.join(t, '.local', 'share', 'claude', 'versions', '9.9.9'))
+    assert first_line_width({}, {**FULL, 'version': '2.1.302'}) == beside, 'an update installed makes the same room'
 
 F = 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'
 assert sb.env_flag(b'A=1\0' + F.encode() + b'=1\0', F) is True and sb.env_flag(F.encode() + b'=true\0', F) is True
 assert sb.env_flag(F.encode() + b'=0\0', F) is False and sb.env_flag(b'', F) is False
 assert sb.env_flag(b'X_' + F.encode() + b'=1\0', F) is False
+
+# Claude Code's idle hint shows once the session has been idle 75 minutes since its turn ended, with 100k tokens or
+# more; its launch environment can move both thresholds
+idle = lambda minutes, tokens=200_000, env=b'', status='idle': sb.idle_hint(
+    {'status': status, 'statusUpdatedAt': (NOW - minutes * 60) * 1000}, {'context_window': {'total_input_tokens': tokens}}, env, NOW)
+assert idle(76) and not idle(74) and not idle(76, tokens=99_000) and not idle(76, status='busy')
+assert idle(11, env=b'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES=10\0') and idle(76, 60_000, b'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD=50000\0')
+assert idle(76, env=b'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES=x\0') and not sb.idle_hint({'status': 'idle'}, FULL, b'', NOW)
+assert sb.update_ready('2.1.303', '2.1.302') and not sb.update_ready('2.1.302', '2.1.302')
+assert not sb.update_ready(None, '2.1.302') and not sb.update_ready('2.1.303', None)
 
 # the settings page (configure.py): its cleaning, its sample, the card it draws, the previews, guards, lifetime
 wspec = importlib.util.spec_from_file_location('web', os.path.join(os.path.dirname(spec.origin), 'configure.py'))
