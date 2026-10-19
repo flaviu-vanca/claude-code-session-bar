@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Session Bar settings in the browser: drag elements between the card's places, pick a palette and the bars, and
-watch the card change, drawn by session-bar.py itself on a sample session whose meters you can move.
+watch the card change, drawn by session-bar.py itself on a sample session.
 
 Run it in a terminal of its own:
   python3 ~/claude-skin/configure.py [port]
@@ -84,24 +84,13 @@ def clean(raw):
         os.unlink(f.name)
 
 
-def sample(knobs):
-    """The sample session, its clocks moved to now, with the page's ctx, 5h and week (0-100) if given."""
+def sample():
+    """The sample session, its clocks moved to now."""
     d = json.loads(json.dumps(SAMPLE))
     shift = time.time() - NOW
     for w in d['rate_limits'].values():
         w['resets_at'] += shift
     d['prompt_cache']['expires_at'] += shift
-    knobs = knobs if isinstance(knobs, dict) else {}
-
-    def pct(key, now):
-        v = knobs.get(key)
-        return max(0, min(100, v)) if isinstance(v, (int, float)) and not isinstance(v, bool) else now
-
-    cw = d['context_window']
-    cw['used_percentage'] = pct('ctx', cw['used_percentage'])
-    cw['total_input_tokens'] = round(cw['used_percentage'] / 100 * cw['context_window_size'])
-    for key, window in (('5h', 'five_hour'), ('week', 'seven_day')):
-        d['rate_limits'][window]['used_percentage'] = pct(key, d['rate_limits'][window]['used_percentage'])
     return d
 
 
@@ -137,16 +126,6 @@ def previews(cfg, d):
         for name in sb.CHIPS:
             g = sb.chips(d, states(True), now, [name])
             out[name] = plain(g[0]) if g else []
-    return out
-
-
-def palette_rows(cfg, d):
-    """The meters row in each palette, for the palette cards."""
-    with LOCK:
-        now, h, out = time.time(), sb.host(HERE), {}
-        for name in sb.PALETTES:
-            sb.use_palette(name)
-            out[name] = plain(alone(cfg, ['ctx', '5h', 'week'], d, now, h))
     return out
 
 
@@ -195,10 +174,9 @@ class Handler(BaseHTTPRequestHandler):
             with open(PAGE, 'rb') as f:
                 return self.send(200, f.read(), 'text/html; charset=utf-8')
         if self.path == '/api/state':
-            return self.send(200, {'cfg': sb.load_config(SAVE), 'default': clean(sb.DEFAULT), 'saveTo': SAVE,
+            return self.send(200, {'cfg': sb.load_config(SAVE), 'places': sb.PLACES, 'what': WHAT,
                                    'kinds': {'text': sb.TEXT, 'meter': sb.METERS, 'chip': sb.CHIPS},
-                                   'places': sb.PLACES, 'what': WHAT, 'palettes': sb.PALETTES,
-                                   'columns': sb.terminal_columns() or 160})
+                                   'palettes': sb.PALETTES, 'columns': sb.terminal_columns() or 160})
         self.send(404, {'error': 'not found'})
 
     def do_POST(self):
@@ -222,9 +200,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/render':
             columns = body.get('columns')
             columns = max(30, min(300, columns)) if isinstance(columns, int) and not isinstance(columns, bool) else 160
-            d = sample(body.get('sample'))
+            d = sample()
             return self.send(200, {'cfg': cfg, **render(cfg, columns, body.get('rc') is True, d),
-                                   'previews': previews(cfg, d), 'palettes': palette_rows(cfg, d)})
+                                   'previews': previews(cfg, d)})
         if self.path == '/api/save':
             save(cfg, SAVE)
             return self.send(200, {'cfg': cfg, 'path': SAVE})

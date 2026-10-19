@@ -36,14 +36,18 @@ When a row is too long, its meters shrink to half their length, then it wraps on
 between elements. The edges still drop elements from the end of their lists.
 
 `configure.py` edits the file through a page in the browser, `configure-web.html`, whose card and tiles are drawn by
-the card itself:
-- drag elements between the places, or click a place and then an element; `×` or `Del` removes one;
-- `Alt` `←` `→` move an element within its place; rows are added, moved and deleted on the page;
-- the palettes and the bars have their own controls; sliders move the sample session's ctx, 5h and week;
+the card itself. The page is always one screen: the card, its places and the elements each scroll in their own box.
+- drag elements between the places, or click a place and then an element; `×`, `Del` or a drop on the elements
+  removes one. Every place takes any number of elements, the top edge's two sides too;
+- the elements fold in groups: Meters, Model, Session, Workspace, Machine and Chips. Hovering or focusing one shows
+  what it shows (`WHAT` in `configure.py`), where it can go and where it is;
+- `Alt` `←` `→` move an element within its place; rows are added and deleted on the page;
+- Look holds the palettes and the bars;
 - `Ctrl` `S` saves (written whole, through a temporary file), `Ctrl` `Z` undoes.
 
 The server answers only this machine's page (Host and Origin) and runs every setting through `load_config` before it
-renders or saves. On 2026-10-19 it replaced the terminal configurator, which is in git at `899d14d` (MIX-12).
+renders or saves. On 2026-10-19 it replaced the terminal configurator, which is in git at `899d14d` (MIX-12). The
+page before this one, with sliders for the sample session and an actual-size view, is in git at `3d08aad`.
 
 The card picks up a save on its next run. `statusLine.refreshInterval` is 1 s since 2026-10-18, so the card also
 follows a window resize within a second: Claude Code reruns the command on its triggers and that timer, never on a

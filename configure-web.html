@@ -2,313 +2,222 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Session Bar settings</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%23221a17%22/%3E%3Ctext x=%2216%22 y=%2223%22 font-size=%2220%22 text-anchor=%22middle%22 fill=%22%23d97757%22%3E%E2%9C%BB%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%2304121b%22/%3E%3Crect x=%227%22 y=%2210%22 width=%2218%22 height=%2212%22 rx=%223%22 fill=%22none%22 stroke=%22white%22 stroke-width=%221.6%22/%3E%3Cpath d=%22M10 15h3M14.5 15h3M19 15h3%22 stroke=%22white%22 stroke-width=%222%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-/* tokens: surfaces and type after Claude-Code-Agent-Monitor's dark theme; spacing on a 4/8 px grid */
+/* the settings page, reduced to what it needs: the card, its places, the elements, the look, undo and save */
 :root {
-  --s0: #06060a; --s1: #0c0c14; --s2: #13131e; --s3: #1a1a28; --s4: #222233; --s5: #2a2a3d;
-  --border: #2a2a3d; --border-l: #363650;
-  --text: #e4e4ed; --muted: #9ca3af; --faint: #6b7280;
-  --accent: rgb(217,119,87); --accent-muted: rgba(217,119,87,.15);
-  --green: rgb(63,185,80); --yellow: rgb(227,179,65); --red: rgb(248,81,73);
-  --k-text: #60a5fa; --k-meter: #34d399; --k-chip: #a78bfa;
-  --sans: Inter, "Noto Sans", system-ui, sans-serif; --mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", monospace;
-  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
-  --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 24px; --sp6: 32px;
+  --ink: #fff; --ink-2: rgba(255,255,255,.76); --ink-3: rgba(255,255,255,.52);
+  --e-out: cubic-bezier(.16,1,.3,1);
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --tight: 'Inter Tight', 'Inter', sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", monospace;
+  --k-text: #7db7ff; --k-meter: #5ee0b0; --k-chip: #c4a7ff;
 }
 * { box-sizing: border-box; }
 html { color-scheme: dark; }
-body { margin: 0; background: var(--s0); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
-* { scrollbar-width: thin; scrollbar-color: var(--s5) var(--s1); }
-::selection { background: var(--accent-muted); }
-svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
-button { font: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-kbd { font: 11px/1 var(--mono); border: 1px solid var(--border-l); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; color: var(--text); background: var(--s2); }
+body { margin: 0; min-height: 100vh; color: var(--ink); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased;
+  background: radial-gradient(120% 90% at 72% 0%, #145061 0%, #0b2f3e 34%, #061c29 64%, #04121b 100%) fixed; }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(40vmax 34vmax at 88% 6%, rgba(38,160,150,.32), transparent 70%),
+              radial-gradient(38vmax 32vmax at 4% 60%, rgba(32,86,170,.26), transparent 70%),
+              radial-gradient(30vmax 26vmax at 30% 104%, rgba(217,119,87,.16), transparent 70%); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-/* buttons */
-.btn { display: inline-flex; align-items: center; gap: var(--sp2); height: 34px; padding: 0 var(--sp3); border-radius: var(--r-md);
-  border: 1px solid var(--border); background: var(--s3); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s; }
-.btn:hover:not(:disabled) { background: var(--s4); border-color: var(--border-l); }
-.btn:disabled { opacity: .4; cursor: default; }
-.btn.primary { background: var(--accent); border-color: transparent; color: #0c0806; font-weight: 600; }
-.btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
-.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
-.btn.ghost:hover:not(:disabled) { color: var(--text); background: var(--s4); }
-.btn.icon { width: 34px; padding: 0; justify-content: center; }
-.btn.sm { height: 28px; font-size: 12px; padding: 0 var(--sp2); }
-.btn.sm.icon { width: 28px; }
+/* the page is always one screen: what grows scrolls inside its own box */
+.app { height: 100vh; height: 100dvh; padding: 16px 22px 20px; display: grid; gap: 14px; grid-template-rows: auto auto minmax(0, 1fr); }
+.app > * { min-width: 0; }
+.glass { position: relative; border-radius: 22px; border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(255,255,255,.125) 0%, rgba(255,255,255,.135) 13%, rgba(255,255,255,.098) 34%, rgba(255,255,255,.092) 100%);
+  backdrop-filter: blur(18px) saturate(115%); -webkit-backdrop-filter: blur(18px) saturate(115%); }
+.rise { animation: rise .7s var(--e-out) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 
-/* app shell */
-.app { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: 100vh; }
-.side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; background: var(--s1); border-right: 1px solid var(--border); }
-.brand { display: flex; align-items: center; gap: var(--sp3); padding: var(--sp5) var(--sp5) var(--sp4); border-bottom: 1px solid var(--border); }
-.tileicon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-muted); color: var(--accent); flex: none; }
-.tileicon.lg { width: 48px; height: 48px; border-radius: 12px; }
-.brand .star { font-size: 20px; line-height: 1; }
-.brand b { display: block; font-weight: 600; font-size: 15px; }
-.brand small { color: var(--muted); font-size: 12px; }
-.side-body { flex: 1; overflow: auto; padding: var(--sp4) var(--sp4) var(--sp2); }
-.label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.search { position: relative; margin: var(--sp3) 0; }
-.search svg { position: absolute; left: 10px; top: 9px; color: var(--faint); }
-.search input { width: 100%; height: 34px; padding: 0 var(--sp3) 0 34px; border-radius: var(--r-md); border: 1px solid var(--border);
-  background: var(--s2); color: var(--text); font: inherit; font-size: 13px; transition: border-color .15s; }
-.search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
-.tabs { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); }
-.tabs button { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-sm);
-  background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
-.tabs button:hover { color: var(--text); }
-.tabs button.on { background: var(--accent-muted); color: var(--accent); }
-.count { font: 500 10.5px/1 var(--sans); padding: 2px 6px; border-radius: 999px; background: var(--s4); color: var(--muted); }
-.tabs button.on .count { background: rgba(255,255,255,.08); color: inherit; }
-.lib { display: flex; flex-direction: column; gap: var(--sp2); margin-top: var(--sp3); }
-.lib .group-title { display: flex; align-items: center; gap: var(--sp2); margin: var(--sp3) 0 var(--sp1); }
-.lib .group-title:first-child { margin-top: 0; }
-.side-foot { padding: var(--sp3) var(--sp4) var(--sp4); border-top: 1px solid var(--border); display: grid; gap: var(--sp2); }
-.pillcard { display: flex; align-items: center; justify-content: space-between; gap: var(--sp2); height: 36px; padding: 0 var(--sp3);
-  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); font-size: 12.5px; }
-.live { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-weight: 500; }
-.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(63,185,80,.18); }
-.live.off { color: var(--red); }
-.live.off::before { box-shadow: 0 0 0 3px rgba(248,81,73,.18); }
+/* header: the name, the state, undo and save */
+header { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand svg { width: 38px; height: 38px; }
+.brand h1 { margin: 0; font: 500 24px/1 var(--tight); letter-spacing: .2px; }
+.brand small { display: block; margin-top: 4px; color: var(--ink-3); font-size: 12.5px; }
+.grow { flex: 1; }
+.state { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); }
+.state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #5ee08a; box-shadow: 0 0 0 3px rgba(94,224,138,.2); }
+.state.dirty::before { background: #ffcf6b; box-shadow: 0 0 0 3px rgba(255,207,107,.2); }
+.state.gone::before { background: #ff8b84; box-shadow: 0 0 0 3px rgba(255,139,132,.2); }
+.round { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; border: 0; cursor: pointer;
+  background: rgba(255,255,255,.15); backdrop-filter: blur(16px); transition: background .2s; }
+.round:hover:not(:disabled) { background: rgba(255,255,255,.24); }
+.round:disabled { opacity: .4; cursor: default; }
+.save { height: 42px; padding: 0 20px; border-radius: 21px; border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 600; color: #06141c; background: linear-gradient(to top, #cfdef6 20%, #fafafa 80%); position: relative; overflow: hidden; }
+.save:disabled { opacity: .45; cursor: default; }
+.save:not(:disabled)::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.9), transparent); animation: shimmer 1.8s linear infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
 
-/* inspector */
-.inspector { margin-top: var(--sp4); padding: var(--sp3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--s2); }
-.inspector .t { display: flex; align-items: center; gap: var(--sp2); font-weight: 600; margin: 6px 0 var(--sp1); }
-.inspector p { margin: 0 0 var(--sp2); color: var(--muted); font-size: 12.5px; }
-.inspector .big { font: 12.5px/1.35 var(--mono); padding: var(--sp2) 10px; border-radius: var(--r-sm); background: var(--s0); overflow-x: auto; white-space: pre; border: 1px solid var(--border); }
-.inspector .where { margin: var(--sp2) 0 0; font-size: 11.5px; color: var(--faint); }
+/* the card in Claude Code's footer */
+.preview { padding: 10px; }
+.screen { border-radius: 14px; background: rgba(3,10,14,.8); border: 1px solid rgba(255,255,255,.1); padding: 16px 4px 18px; overflow: auto; max-height: 38vh;
+  font-family: var(--mono); color: #d4d4d8; min-height: 120px; }
+.ln { white-space: pre; height: 1.3em; line-height: 1.3em; } .c { display: inline-block; width: 1ch; text-align: center; } .d { opacity: .55; } .b { font-weight: 700; }
+.screen.flash { animation: flash .6s ease-out; }
+@keyframes flash { from { box-shadow: 0 0 0 1px rgba(255,255,255,.35), 0 0 36px -10px rgba(150,230,255,.6); } }
 
-/* main */
-.main { min-width: 0; padding: var(--sp6) var(--sp6) 64px; display: grid; gap: var(--sp5); align-content: start; max-width: 1480px; }
-.main > *, .look > *, .controls > *, .knobs > * { min-width: 0; }
-.head { display: flex; align-items: center; gap: var(--sp4); flex-wrap: wrap; }
-.head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -.01em; display: flex; align-items: center; gap: var(--sp3); }
-.head p { margin: 2px 0 0; color: var(--muted); }
-.badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 500;
-  border: 1px solid var(--border-l); color: var(--muted); background: var(--s2); white-space: nowrap; }
-.badge.ok { color: var(--green); border-color: rgba(63,185,80,.3); background: rgba(63,185,80,.08); }
-.badge.warn { color: var(--yellow); border-color: rgba(227,179,65,.3); background: rgba(227,179,65,.08); }
-.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.head .grow { flex: 1; }
-.actions { display: flex; align-items: center; gap: var(--sp2); }
-.sep { width: 1px; height: 22px; background: var(--border); margin: 0 var(--sp1); }
+/* the editor: the card's places on the left, the elements on the right */
+.editor { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 620px); grid-template-rows: minmax(0, 1fr); gap: 18px; padding: 18px; min-height: 0; }
+.editor > *, .look > * { min-width: 0; }
+.cardedit { padding: 6px 4px 4px; }
+.edge { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 0 22px; }
+.edge.top { margin-bottom: -21px; } .edge.bottom { margin-top: -21px; align-items: flex-start; }
+/* the places on an edge stretch along it as on the card, so the room for more shows; the line shows between them */
+.edge.top { gap: 40px; } .edge .zone { flex: 1 1 auto; } .zone[data-place="top_right"] { justify-content: flex-end; }
+.frame { border: 1.5px solid rgba(255,255,255,.3); border-radius: 18px; padding: 36px 14px 38px; background: rgba(0,0,0,.14); }
+.zone { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; min-width: 150px; padding: 6px;
+  border-radius: 14px; border: 1px dashed rgba(255,255,255,.2); transition: border-color .18s, background .18s, box-shadow .18s, opacity .18s; }
+.edge .zone { background: rgba(9,30,40,.94); border-style: solid; border-color: rgba(255,255,255,.14); }
+.zone .tag { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); padding: 0 6px; white-space: nowrap; }
+.zone .empty { font-size: 12.5px; color: var(--ink-3); padding: 0 6px; }
+.zone:has(.slot) .empty { display: none; }
+.zone.active { border-color: rgba(255,255,255,.55); border-style: solid; }
+.rows { display: grid; gap: 10px; }
+.row { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr) 28px; gap: 8px; align-items: center; }
+.row .n { font: 600 11px var(--mono); color: var(--ink-3); text-align: center; }
+.row .zone { min-height: 50px; background: rgba(0,0,0,.2); border-color: rgba(255,255,255,.1); }
+.row .del { width: 28px; height: 28px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; display: grid; place-items: center;
+  opacity: 0; transition: opacity .15s, background .15s; }
+.row:hover .del, .row:focus-within .del { opacity: 1; } .row .del:hover { background: rgba(255,255,255,.12); color: #fff; }
+.add-row { margin: 12px 0 0 30px; height: 34px; width: calc(100% - 66px); border-radius: 12px; border: 1px dashed rgba(255,255,255,.22); background: transparent;
+  color: var(--ink-2); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; transition: background .15s, border-color .15s; }
+.add-row:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.4); }
 
-.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp4); }
-.card { background: var(--s3); border: 1px solid var(--border); border-radius: var(--r-lg); }
-.stat { padding: var(--sp4) var(--sp5) 18px; position: relative; transition: border-color .15s; }
-.stat:hover { border-color: var(--border-l); }
-.stat svg { position: absolute; top: 18px; right: 20px; width: 20px; height: 20px; }
-.stat .v { margin-top: 10px; font-size: 26px; font-weight: 600; letter-spacing: -.01em; display: flex; align-items: baseline; gap: var(--sp2); }
-.stat .v small { font-size: 12.5px; font-weight: 400; color: var(--muted); }
-.stat .sw { display: inline-flex; gap: 3px; margin-left: 2px; }
-.stat .sw i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+/* a box's title sits in its top edge, as the card's does: the fieldset leaves the border open behind the legend */
+fieldset { margin: 0; min-width: 0; }
+legend { padding: 0 8px; margin-left: 6px; font-size: 13px; font-weight: 600; }
 
-.section { padding: var(--sp5); }
-.section-head { display: flex; align-items: center; gap: var(--sp3); margin-bottom: var(--sp4); flex-wrap: wrap; }
-.section-head .label { display: inline-flex; align-items: center; gap: var(--sp2); }
-.section-head .note { color: var(--faint); font-size: 12.5px; }
-.section-head .grow { flex: 1; }
+/* a box that scrolls fades at an edge only while more of it lies past that edge */
+.scroller, .screen, .editor { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.3) transparent; }
+.scroller { overflow-y: auto; overscroll-behavior: contain; }
+.scroller.fade-t { mask-image: linear-gradient(transparent, #000 22px); }
+.scroller.fade-b { mask-image: linear-gradient(#000 calc(100% - 26px), transparent); }
+.scroller.fade-t.fade-b { mask-image: linear-gradient(transparent, #000 22px, #000 calc(100% - 26px), transparent); }
 
-/* preview */
-.controls { display: grid; grid-template-columns: auto 1fr auto; gap: var(--sp3) var(--sp5); align-items: center; margin-bottom: var(--sp4); }
-.seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); }
-.seg button { height: 28px; padding: 0 var(--sp3); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; }
-.seg button:hover { color: var(--text); }
-.seg button.on { background: var(--accent-muted); color: var(--accent); }
-.range { display: flex; align-items: center; gap: var(--sp3); font-size: 12.5px; color: var(--muted); min-width: 0; }
-.range input { flex: 1; min-width: 80px; accent-color: var(--accent); }
-.range output { min-width: 48px; text-align: right; color: var(--text); font: 500 12.5px var(--mono); }
-.switch { display: inline-flex; align-items: center; gap: var(--sp2); font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none; }
-.switch input { appearance: none; width: 34px; height: 20px; border-radius: 999px; background: var(--s5); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
-.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #c9cad3; transition: transform .15s; }
-.switch input:checked { background: var(--accent); }
-.switch input:checked::after { transform: translateX(14px); background: #fff; }
-.knobs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: var(--sp4); align-items: center; padding: var(--sp3) var(--sp4);
-  margin-bottom: var(--sp4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); }
-.knobs .range span { width: 34px; color: var(--muted); font: 500 12px var(--mono); }
-.window { border: 1px solid var(--border-l); border-radius: 10px; overflow: hidden; background: #0a0a0f; box-shadow: 0 16px 48px rgba(0,0,0,.45); }
-.titlebar { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 var(--sp3); background: var(--s2); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
-.titlebar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
-.titlebar i:nth-child(1) { background: #ff5f57; } .titlebar i:nth-child(2) { background: #febc2e; } .titlebar i:nth-child(3) { background: #28c840; }
-.titlebar span { flex: 1; text-align: center; margin-right: 40px; }
-.screen { padding: var(--sp4) 0 18px; overflow-x: auto; font-family: var(--mono); color: #d4d4d8; }
-.ln { white-space: pre; height: 1.3em; line-height: 1.3em; }
-.c { display: inline-block; width: 1ch; text-align: center; }
-.d { opacity: .55; }
-.b { font-weight: 700; }
-.foot { margin-top: var(--sp3); font-size: 12px; color: var(--faint); display: flex; gap: var(--sp2); align-items: center; }
+/* the elements tray: folding groups in a list that scrolls */
+.tray { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 2px 14px 0; border-radius: 18px;
+  background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.1); transition: background .18s, box-shadow .18s; }
+.tray .hint { margin: 0 0 8px; font-size: 12px; color: var(--ink-3); }
+#groups { flex: 1; min-height: 0; margin: 0 -10px 0 -6px; padding: 0 6px 14px; }
+.group + .group { border-top: 1px solid rgba(255,255,255,.07); }
+.fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 6px; border: 0; border-radius: 10px; background: transparent; cursor: pointer;
+  color: var(--ink-2); font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; transition: background .15s, color .15s; }
+.fold:hover { background: rgba(255,255,255,.07); color: #fff; }
+.fold .chev { width: 14px; height: 14px; transition: transform .25s var(--e-out); }
+.fold[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+.fold .kdot { width: 7px; height: 7px; border-radius: 50%; background: var(--k); box-shadow: 0 0 8px var(--k); }
+.fold .count { margin-left: auto; padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.08); font: 500 11px var(--mono); letter-spacing: 0; color: var(--ink-3); }
+.fold .count b { color: #fff; font-weight: 600; }
+.cloud { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 12px; }
+.tray.remove { background: rgba(255,90,90,.1); box-shadow: inset 0 0 0 1.5px rgba(255,140,140,.65); }
+.tray.remove::after { content: "Drop to take it off the card"; position: absolute; left: 50%; top: 12px; transform: translateX(-50%); padding: 4px 10px; border-radius: 999px;
+  background: rgba(255,90,90,.85); color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
 
-/* layout editor in the card's own shape */
-.cardedit { margin: var(--sp2) var(--sp2) var(--sp1); }
-.frame { position: relative; border: 1.5px solid #4b4d5c; border-radius: 16px; padding: 34px var(--sp4) 36px; background: var(--s2); }
-/* the edges sit on the frame's line: the top one overlaps it from above, the bottom one from below, and each grows away from the card */
-.edge { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: var(--sp3); margin: 0 var(--sp5); }
-.edge.top { margin-bottom: -20px; } .edge.bottom { margin-top: -20px; align-items: flex-start; }
-.edge .zone { background: var(--s3); border-color: var(--border); }
-.zone { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 38px; min-width: 160px;
-  padding: 5px var(--sp2); border: 1px dashed var(--border-l); border-radius: 10px; transition: border-color .15s, background .15s, box-shadow .15s; }
-.zone .tag { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 0 var(--sp1); white-space: nowrap; }
-.zone .empty { font-size: 12px; color: var(--faint); }
-.zone.active { border-style: solid; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
-.zone.can-drop { border-style: solid; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--s2)); }
-.zone.no-drop { opacity: .35; }
-.rows { display: grid; gap: var(--sp2); }
-.row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: var(--sp3); align-items: center; }
-.row .rlabel { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
-.row .zone { min-width: 0; min-height: 46px; background: var(--s1); border-color: var(--border); }
-.row .tools { display: flex; gap: 2px; opacity: .45; transition: opacity .15s; }
-.row:hover .tools, .row:focus-within .tools { opacity: 1; }
-.add-row { margin-top: var(--sp3); width: 100%; justify-content: center; border-style: dashed; background: transparent; color: var(--muted); }
-.legend { display: flex; flex-wrap: wrap; gap: var(--sp4); font-size: 12px; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend span::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: var(--k); }
-.help { display: flex; flex-wrap: wrap; gap: var(--sp2) var(--sp5); margin-top: var(--sp4); padding-top: var(--sp3); border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
-
-/* tiles: an element as the card draws it */
-.tile { --k: var(--k-text); position: relative; display: inline-flex; align-items: center; gap: 10px; max-width: 100%; min-height: 32px;
-  padding: 4px 6px 4px 12px; border-radius: var(--r-md); background: var(--s3); border: 1px solid var(--border);
-  cursor: grab; user-select: none; transition: border-color .15s, background .15s, transform .15s; }
-.tile::before { content: ""; position: absolute; left: -1px; top: 6px; bottom: 6px; width: 3px; border-radius: 0 3px 3px 0; background: var(--k); }
+/* tiles: an element as the card draws it, picked up by its grip or anywhere on it */
+.tile { --k: var(--k-text); position: relative; display: inline-flex; align-items: center; gap: 7px; height: 34px; max-width: 100%; padding: 0 6px 0 5px;
+  border-radius: 11px; background: rgba(255,255,255,.11); border: 1px solid rgba(255,255,255,.16); cursor: grab; touch-action: none; user-select: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 6px 14px -10px rgba(0,0,0,.7); transition: transform .16s var(--e-out), background .16s, box-shadow .16s, opacity .16s; }
 .tile.meter { --k: var(--k-meter); } .tile.chip { --k: var(--k-chip); }
-.tile:hover { border-color: var(--border-l); background: var(--s4); }
-.tile.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
-.tile.dragging { opacity: .3; transform: scale(.98); }
-.tile .nm { font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-.tile .rd { font: 12px/1.25 var(--mono); white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 360px; color: #d4d4d8; }
-.tile .x { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 5px; background: transparent; color: var(--faint); cursor: pointer; }
-.tile .x:hover { color: var(--text); background: var(--s5); }
-.tile .x svg { width: 13px; height: 13px; }
-.lib .tile { width: 100%; justify-content: space-between; padding-right: 10px; }
-.lib .tile .rd { max-width: 100%; }
-.lib .tile.placed { opacity: .5; }
-.lib .tile .ok { display: none; color: var(--green); }
-.lib .tile.placed .ok { display: inline-flex; }
-.lib .tile .left { display: grid; gap: 1px; min-width: 0; flex: 1; }
-.marker { width: 3px; align-self: stretch; min-height: 24px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.tile:hover { transform: translateY(-1px); background: rgba(255,255,255,.17); }
+.tile .grip { width: 8px; height: 14px; flex: none; opacity: .4; background: radial-gradient(circle, #fff 1px, transparent 1.3px) 0 0 / 4px 4.6px; }
+.tile .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--k); flex: none; box-shadow: 0 0 8px var(--k); }
+.tile .rd { font: 12px/1 var(--mono); white-space: pre; overflow: hidden; text-overflow: ellipsis; color: #ececf0; }
+.tile .x { width: 20px; height: 20px; border-radius: 6px; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; display: grid; place-items: center;
+  margin-left: -2px; opacity: 0; transition: opacity .15s, background .15s; }
+.tile .x svg { width: 12px; height: 12px; }
+.tile:hover .x, .tile:focus-visible .x { opacity: 1; } .tile .x:hover { background: rgba(255,255,255,.16); color: #fff; }
+.cloud .tile { height: 30px; } .cloud .tile .rd { font-size: 11.5px; }
+.cloud .tile.placed { opacity: .38; }
+.tile.landed { animation: land .34s cubic-bezier(.2,.9,.3,1.35); }
+@keyframes land { from { transform: scale(1.08); background: rgba(255,255,255,.28); } }
 
-/* look */
-.look { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--sp5); }
-.palettes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: var(--sp3); }
-.pal { position: relative; text-align: left; padding: var(--sp3) var(--sp4) var(--sp3) 18px; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--s2); color: var(--text); cursor: pointer; overflow: hidden; transition: border-color .15s, background .15s; }
-.pal::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--pa); }
-.pal:hover { border-color: var(--border-l); background: var(--s4); }
-.pal.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
-.pal .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.pal .name { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; display: inline-flex; gap: 6px; align-items: center; }
-.pal .name svg { color: var(--accent); width: 14px; height: 14px; display: none; }
-.pal.on .name svg { display: inline; }
-.pal .sw { display: flex; gap: 3px; }
-.pal .sw i { width: 12px; height: 12px; border-radius: 3px; display: block; }
-.pal .rd { font: 11.5px/1.3 var(--mono); white-space: pre; overflow: hidden; text-overflow: ellipsis; background: var(--s0); padding: 7px 9px; border-radius: var(--r-sm); border: 1px solid var(--border); }
-.bars { padding: var(--sp4); border: 1px solid var(--border); border-radius: 10px; background: var(--s2); display: grid; gap: var(--sp3); align-content: start; }
-.bars .v { font-size: 26px; font-weight: 600; }
-.bars .v small { font-size: 12.5px; color: var(--muted); font-weight: 400; margin-left: 6px; }
-.bars input { width: 100%; accent-color: var(--accent); }
-.bars .ticks { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--faint); }
-.bars .rd { font: 12.5px var(--mono); white-space: pre; overflow: hidden; background: var(--s0); padding: 8px 10px; border-radius: var(--r-sm); border: 1px solid var(--border); }
+/* dragging */
+body.dragging, body.dragging * { cursor: grabbing !important; }
+body.dragging { user-select: none; }
+.ghost { position: fixed; left: 0; top: 0; z-index: 50; pointer-events: none; will-change: transform; }
+.ghost .tile { transition: transform .18s var(--e-out), box-shadow .18s; }
+.ghost .tile.up { transform: scale(1.06) rotate(-2deg); background: rgba(44,78,92,.96); border-color: rgba(255,255,255,.4);
+  box-shadow: 0 24px 46px -14px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.25); }
+.ghost .tile .x { display: none; }
+.slot { height: 34px; flex: none; border-radius: 11px; border: 1.5px dashed rgba(255,255,255,.6); background: rgba(255,255,255,.08);
+  box-shadow: inset 0 0 14px rgba(255,255,255,.08); }
+.zone.can { border-color: rgba(255,255,255,.34); }
+.zone.cannot { opacity: .32; }
+.zone.over { border-style: solid; border-color: #fff; background: rgba(255,255,255,.09);
+  box-shadow: 0 0 0 4px rgba(255,255,255,.07), 0 0 30px -8px rgba(150,230,255,.5); }
 
-.toast { position: fixed; right: var(--sp5); bottom: var(--sp5); z-index: 30; display: flex; gap: 10px; align-items: flex-start; max-width: 440px;
-  padding: var(--sp3) var(--sp4); border-radius: 10px; background: var(--s4); border: 1px solid var(--border-l); box-shadow: 0 12px 32px rgba(0,0,0,.45);
-  font-size: 13px; transform: translateY(12px); opacity: 0; transition: .2s; pointer-events: none; }
-.toast svg { color: var(--green); margin-top: 2px; }
-.toast.show { transform: none; opacity: 1; }
-.gone { display: none; position: fixed; left: 344px; right: var(--sp5); bottom: var(--sp5); z-index: 31; padding: var(--sp3) var(--sp4); border-radius: 10px;
-  background: #2a1214; border: 1px solid #6b2a2c; color: #fecaca; font-size: 13px; }
-.gone.show { display: block; }
-.gone code, .foot code { font-family: var(--mono); font-size: 12px; }
-.fade { animation: fade .25s ease-out; }
-@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@media (max-width: 1320px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .look { grid-template-columns: 1fr; } }
-@media (max-width: 980px) { .app { grid-template-columns: 1fr; } .side { position: static; height: auto; } .gone { left: var(--sp5); }
-  .controls, .knobs { grid-template-columns: 1fr; } .main { padding: var(--sp4); } }
-@media (max-width: 640px) { .stats { grid-template-columns: 1fr; } .edge, .edge.top, .edge.bottom { flex-direction: column; align-items: stretch; margin: var(--sp2) 0; }
-  .frame { padding: var(--sp3); } .row { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+/* the look, under the card's places */
+.side { display: grid; gap: 22px; align-content: start; min-height: 0; padding-right: 4px; }
+.look { display: flex; align-items: center; gap: 18px; padding: 6px 16px 14px; flex-wrap: wrap; border-radius: 18px; background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.1); }
+.pals { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+.pal { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.08); cursor: pointer; font-size: 12.5px; font-weight: 500; transition: background .15s, border-color .15s; }
+.pal:hover { background: rgba(255,255,255,.14); }
+.pal.on { border-color: #fff; background: rgba(255,255,255,.18); box-shadow: 0 0 0 3px rgba(255,255,255,.1); }
+.pal .sw { display: inline-flex; gap: 3px; } .pal .sw i { width: 9px; height: 9px; border-radius: 50%; display: block; }
+.bars { display: inline-flex; align-items: center; gap: 4px; padding: 3px; border-radius: 18px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }
+.bars button { width: 30px; height: 30px; border-radius: 50%; border: 0; background: transparent; cursor: pointer; font-size: 16px; }
+.bars button:hover:not(:disabled) { background: rgba(255,255,255,.14); } .bars button:disabled { opacity: .35; cursor: default; }
+.bars output { min-width: 74px; text-align: center; font-size: 12.5px; color: var(--ink-2); }
+.bars output b { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* what an element is, on hover or keyboard focus */
+.tip { position: fixed; left: 0; top: 0; z-index: 70; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px 11px; border-radius: 14px;
+  background: rgba(7,22,30,.94); border: 1px solid rgba(255,255,255,.16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 20px 44px -14px rgba(0,0,0,.8); pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .14s, transform .18s var(--e-out); }
+.tip.show { opacity: 1; transform: none; }
+.tip-h { display: flex; align-items: center; gap: 8px; }
+.tip-h .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--k); box-shadow: 0 0 8px var(--k); }
+.tip-h b { font: 600 13px var(--mono); }
+.tip-h small { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--k); background: color-mix(in srgb, var(--k) 16%, transparent); }
+.tip p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.45; }
+.tip dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 9px 0 0; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.1); font-size: 12px; }
+.tip dt { color: var(--ink-3); } .tip dd { margin: 0; color: var(--ink-2); }
+.tip .act { margin-top: 8px; font-size: 11.5px; color: var(--ink-3); }
+.tip kbd { font: 600 10.5px var(--mono); padding: 0 5px; border-radius: 5px; border: 1px solid rgba(255,255,255,.2); color: var(--ink-2); }
+
+.gone { display: none; position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; padding: 10px 16px; border-radius: 14px;
+  background: rgba(120,20,24,.6); border: 1px solid rgba(255,160,160,.4); backdrop-filter: blur(14px); font-size: 13px; }
+.gone.show { display: block; } .gone code { font-family: var(--mono); }
+
+/* one column: the places and the elements scroll together */
+@media (max-width: 900px) { .editor { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: max-content; overflow-y: auto; } .side.scroller { overflow: visible; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <div class="app">
-  <aside class="side" aria-label="Elements">
+  <header class="rise">
     <div class="brand">
-      <div class="tileicon"><span class="star">✻</span></div>
-      <div><b>Session Bar</b><small>Claude Code status line</small></div>
+      <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="12" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.3)"/><rect x="9" y="12" width="22" height="16" rx="4.5" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M13.5 18.2h3M18.5 18.2h3" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M23.5 18.2h3" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".38"/><path d="M13.5 23h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".62"/></svg>
+      <div><h1>Session Bar</h1><small>Drag elements onto the card. Save, and the status line picks it up.</small></div>
     </div>
-    <div class="side-body" id="sideBody">
-      <div class="label">Elements</div>
-      <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input type="search" id="filter" placeholder="Search by name or what it shows" aria-label="Search elements"></div>
-      <div class="tabs" id="tabs" role="tablist"></div>
-      <div class="lib" id="lib"></div>
-      <div class="inspector" id="inspector"><div class="label">Details</div><p style="margin-top:6px">Point at a tile to see what it shows and where it can go.</p></div>
-    </div>
-    <div class="side-foot">
-      <div class="pillcard"><span class="live" id="live">Live</span><span style="color:var(--faint);font-family:var(--mono);font-size:11.5px" id="addr"></span></div>
-      <div class="pillcard"><span style="color:var(--muted)">Settings file</span><span style="color:var(--faint);font-family:var(--mono);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px" id="file" title=""></span></div>
-    </div>
-  </aside>
+    <span class="grow"></span>
+    <span class="state" id="state">Saved</span>
+    <button class="round" id="undo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled><svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button class="save" id="save" title="Save (Ctrl+S)" disabled>Save</button>
+  </header>
 
-  <main class="main">
-    <div class="head">
-      <div class="tileicon lg"><svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 10h4M7 14h10"/></svg></div>
-      <div>
-        <h1>Settings <span class="badge" id="status">loading</span></h1>
-        <p>Drag elements onto the card. It is drawn by session-bar.py, so what you see is what the status line shows.</p>
-      </div>
-      <span class="grow"></span>
-      <div class="actions">
-        <button class="btn ghost icon" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-        <button class="btn ghost icon" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg class="i" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
-        <span class="sep"></span>
-        <button class="btn" id="defaults" title="Put back the card's default layout"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Defaults</button>
-        <button class="btn" id="revert" title="Drop the changes since the last save" disabled><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Revert</button>
-        <button class="btn primary" id="save" title="Save (Ctrl+S)" disabled><svg class="i" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save</button>
-      </div>
-    </div>
+  <section class="glass preview rise" style="animation-delay:.06s" aria-label="The card as the status line draws it">
+    <div class="screen" id="screen"></div>
+  </section>
 
-    <div class="stats" id="stats"></div>
-
-    <section class="card section" aria-label="Live preview">
-      <div class="section-head">
-        <span class="label"><svg class="i" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>Live preview</span>
-        <span class="note" id="previewNote"></span>
-        <span class="grow"></span>
-        <div class="seg" id="zoom" aria-label="Preview size"><button data-z="fit" class="on" title="Shrink the text so the whole terminal fits">Fit</button><button data-z="real" title="Terminal-sized text; scroll sideways for the rest">Actual size</button></div>
-      </div>
-      <div class="controls">
-        <div class="seg" id="presets" aria-label="Terminal width presets"></div>
-        <label class="range">Terminal <input type="range" id="cols" min="40" max="240" aria-label="Terminal width in columns"> <output id="colsOut"></output></label>
-        <label class="switch"><input type="checkbox" id="rc" checked> Remote Control</label>
-      </div>
-      <div class="knobs" aria-label="Sample session">
-        <label class="range"><span>ctx</span><input type="range" data-knob="ctx" min="0" max="100"><output data-out="ctx"></output></label>
-        <label class="range"><span>5h</span><input type="range" data-knob="5h" min="0" max="100"><output data-out="5h"></output></label>
-        <label class="range"><span>week</span><input type="range" data-knob="week" min="0" max="100"><output data-out="week"></output></label>
-        <button class="btn sm ghost" id="resetKnobs">Reset sample</button>
-      </div>
-      <div class="window">
-        <div class="titlebar"><i></i><i></i><i></i><span>claude — ~/claude-skin</span></div>
-        <div class="screen" id="screen"></div>
-      </div>
-      <div class="foot"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-        The input box, <code>/rc</code> and the mode line are Claude Code's own, drawn around the card for context. The sample's ctx, 5h and week move with the sliders above.</div>
-    </section>
-
-    <section class="card section" aria-label="Layout">
-      <div class="section-head">
-        <span class="label"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/></svg>Layout</span>
-        <span class="note">Drag tiles between places. A place lights up when it can take what you hold.</span>
-        <span class="grow"></span>
-        <div class="legend"><span style="--k:var(--k-meter)">Meters · rows</span><span style="--k:var(--k-text)">Text · edges and rows</span><span style="--k:var(--k-chip)">Chips · bottom edge</span></div>
-      </div>
+  <section class="glass editor rise" style="animation-delay:.12s" aria-label="Layout">
+    <div class="side scroller">
       <div class="cardedit">
         <div class="edge top">
           <div class="zone" data-place="top_left" tabindex="0"><span class="tag">Top left</span></div>
@@ -316,77 +225,55 @@ kbd { font: 11px/1 var(--mono); border: 1px solid var(--border-l); border-bottom
         </div>
         <div class="frame">
           <div class="rows" id="rows"></div>
-          <button class="btn add-row" id="addRow"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>Add row</button>
+          <button class="add-row" id="addRow"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>Add row</button>
         </div>
         <div class="edge bottom">
           <div class="zone" data-place="edge" tabindex="0"><span class="tag">Bottom edge</span></div>
         </div>
       </div>
-      <div class="help">
-        <span>Click a place, then a tile in Elements, to add it there</span>
-        <span><kbd>Del</kbd> removes the selected tile</span>
-        <span><kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd> move it within its place</span>
-        <span><kbd>Ctrl</kbd> <kbd>Z</kbd> undo · <kbd>Ctrl</kbd> <kbd>S</kbd> save</span>
-      </div>
-    </section>
-
-    <section class="card section" aria-label="Look">
-      <div class="section-head">
-        <span class="label"><svg class="i" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1a1.6 1.6 0 0 1 1.6-1.7h2c3 0 5.5-2.5 5.5-5.5C22 6 17.5 2 12 2z"/></svg>Look</span>
-        <span class="note">The palette colours the card's frame, meters and chips; the bars set each meter's length.</span>
-      </div>
-      <div class="look">
-        <div class="palettes" id="palettes"></div>
-        <div class="bars">
-          <div class="label">Bars in a meter</div>
-          <div class="v" id="barsVal"></div>
-          <input type="range" id="bars" min="3" max="30" aria-label="Bars in a meter">
-          <div class="ticks"><span>3</span><span>10</span><span>20</span><span>30</span></div>
-          <div class="rd" id="barsRd"></div>
+      <fieldset class="look">
+        <legend>Look</legend>
+        <div class="pals" id="pals"></div>
+        <div class="bars" aria-label="Bars in a meter">
+          <button id="barsDown" aria-label="Fewer bars">−</button><output id="barsOut"></output><button id="barsUp" aria-label="More bars">+</button>
         </div>
-      </div>
-    </section>
-  </main>
+      </fieldset>
+    </div>
+    <fieldset class="tray" id="tray">
+      <legend>Elements</legend>
+      <p class="hint">Drag one onto the card, or click it. Hover one to see what it shows.</p>
+      <div id="groups" class="scroller"></div>
+    </fieldset>
+  </section>
 </div>
-
-<div class="toast" id="toast" role="status"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span id="toastText"></span></div>
-<div class="gone" id="gone" role="alert">The settings server has stopped. Run <code>python3 ~/claude-skin/configure.py</code> again to keep editing; changes not saved on this page are lost.</div>
+<div class="gone" id="gone" role="alert">The settings server has stopped. Run <code>python3 ~/claude-skin/configure.py</code> to open it again.</div>
 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const PLACE = { top_left: 'the top edge, left', top_right: 'the top edge, right', rows: 'any row', edge: 'the bottom edge' };
-const KIND = { meter: 'Meters', text: 'Text', chip: 'Chips' };
-const MODE_COLOR = [255, 193, 7], PROMPT = [136, 136, 136];
-const SVG = {
-  x: '<svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
-  up: '<svg class="i" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>',
-  down: '<svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
-  check: '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
-  width: '<svg class="i" viewBox="0 0 24 24"><path d="m18 8 4 4-4 4M6 8l-4 4 4 4M2 12h20"/></svg>',
-  rows: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/></svg>',
-  grid: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
-  palette: '<svg class="i" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1a1.6 1.6 0 0 1 1.6-1.7h2c3 0 5.5-2.5 5.5-5.5C22 6 17.5 2 12 2z"/></svg>',
-};
-let S, cfg, saved, R = null, active = { place: 'rows', row: 0 }, selected = null, drag = null, tab = 'all';
-let past = [], future = [], timer = null, seq = 0, misses = 0, zoom = 'fit';
-const SAMPLE = { ctx: 38, '5h': 19, week: 68 }, knobs = { ...SAMPLE };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const rgb = c => c ? `rgb(${c[0]},${c[1]},${c[2]})` : null;
+const snap = o => JSON.stringify(o);
+const X = '<svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+// the tray's folding groups: [title, kind, names]; without names a group takes its kind's elements no group names
+const GROUPS = [['Meters', 'meter'], ['Model', 'text', ['model', 'effort', 'thinking', 'style', 'agent']],
+  ['Session', 'text', ['name', 'session', 'version', 'cost', 'time', 'api', 'lines']], ['Workspace', 'text', ['repo', 'cwd', 'worktree', 'dirs']],
+  ['Machine', 'text', ['clock', 'mem', 'disks', 'load', 'battery']], ['More', 'text'], ['Chips', 'chip']];
+const PLACE = { top_left: 'Top left', top_right: 'Top right', rows: 'Rows', edge: 'Bottom edge' };
+const folded = new Set();
+const MODE = [255, 193, 7], PROMPT = [136, 136, 136];
+let S, cfg, saved, R = null, past = [], active = { place: 'rows', row: 0 }, timer = 0, seq = 0, misses = 0, drag = null;
 
 const kindOf = n => S.kinds.meter.includes(n) ? 'meter' : S.kinds.chip.includes(n) ? 'chip' : 'text';
 const accepts = (place, n) => S.places[place].includes(n);
 const listOf = (place, row) => place === 'rows' ? cfg.rows[row] : cfg[place];
 const placed = () => new Set([...cfg.top_left, ...cfg.top_right, ...cfg.rows.flat(), ...cfg.edge]);
-const snap = o => JSON.stringify(o);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const rgb = c => c ? `rgb(${c[0]},${c[1]},${c[2]})` : null;
-const total = () => S.kinds.text.length + S.kinds.meter.length + S.kinds.chip.length;
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }
-
 // pieces [text, rgb, dim, bold] as HTML; `grid` puts each character in its own cell so the box lines meet
 function html(pieces, grid) {
   return pieces.map(([t, c, d, b]) => {
@@ -396,17 +283,9 @@ function html(pieces, grid) {
   }).join('');
 }
 
-/* history */
-function commit(change) {
-  past.push(snap(cfg)); if (past.length > 200) past.shift();
-  future = [];
-  change();
-  refresh();
-}
-function undo() { if (!past.length) return; future.push(snap(cfg)); cfg = JSON.parse(past.pop()); refresh(); }
-function redo() { if (!future.length) return; past.push(snap(cfg)); cfg = JSON.parse(future.pop()); refresh(); }
-
-/* editing */
+/* editing: every change goes through commit, so undo can take it back */
+function commit(change) { past.push(snap(cfg)); if (past.length > 100) past.shift(); change(); refresh(); }
+function undo() { if (!past.length) return; cfg = JSON.parse(past.pop()); refresh(); }
 function removeEverywhere(n) {
   for (const k of ['top_left', 'top_right', 'edge']) cfg[k] = cfg[k].filter(x => x !== n);
   cfg.rows = cfg.rows.map(r => r.filter(x => x !== n));
@@ -416,22 +295,22 @@ function where(n) {
   const row = cfg.rows.findIndex(r => r.includes(n));
   return row < 0 ? null : { place: 'rows', row };
 }
-function place(n, t, index) {
+// n goes to place t at index i among the other elements there
+function placeAt(n, t, i) {
   commit(() => {
     if (t.place === 'rows' && !cfg.rows.length) cfg.rows.push([]);
-    const list = listOf(t.place, t.row);
-    const before = list.slice(0, index ?? list.length).filter(x => x !== n).length;
     removeEverywhere(n);
-    listOf(t.place, t.row).splice(before, 0, n);
+    const list = listOf(t.place, t.row);
+    list.splice(i ?? list.length, 0, n);
   });
-  select(n);
+  landed(n);
 }
-function addToActive(n) {
-  let t = active;
-  if (!accepts(t.place, n) || (t.place === 'rows' && t.row >= cfg.rows.length))
-    t = kindOf(n) === 'chip' ? { place: 'edge', row: 0 } : { place: 'rows', row: Math.max(0, Math.min(active.row, cfg.rows.length - 1)) };
-  place(n, t);
+// where a click puts n: the highlighted place, or else the one that takes it
+function target(n) {
+  if (accepts(active.place, n) && !(active.place === 'rows' && active.row >= cfg.rows.length)) return active;
+  return kindOf(n) === 'chip' ? { place: 'edge', row: 0 } : { place: 'rows', row: Math.max(0, Math.min(active.row, cfg.rows.length - 1)) };
 }
+function addToActive(n) { placeAt(n, target(n)); }
 function nudge(n, step) {
   const w = where(n); if (!w) return;
   const list = listOf(w.place, w.row), i = list.indexOf(n), j = i + step;
@@ -439,252 +318,313 @@ function nudge(n, step) {
   commit(() => { [list[i], list[j]] = [list[j], list[i]]; });
   requestAnimationFrame(() => $(`.zone .tile[data-name="${CSS.escape(n)}"]`)?.focus());
 }
-
-/* tiles */
-function tile(n, inPlace) {
-  const t = document.createElement('div');
-  const isPlaced = !inPlace && placed().has(n);
-  t.className = `tile ${kindOf(n)}${isPlaced ? ' placed' : ''}${inPlace && selected === n ? ' sel' : ''}`;
-  t.tabIndex = 0;
-  t.draggable = true;
-  t.dataset.name = n;
-  t.setAttribute('role', 'button');
-  t.setAttribute('aria-label', `${n}: ${S.what[n] || ''}${isPlaced ? ' (placed)' : ''}`);
-  const pv = R?.previews?.[n] || [];
-  const rd = `<span class="rd">${pv.length ? html(pv) : '<span class="d">nothing in this sample</span>'}</span>`;
-  t.innerHTML = inPlace
-    ? `${rd}<button class="x" aria-label="Remove ${esc(n)}" title="Remove">${SVG.x}</button>`
-    : `<span class="left"><span class="nm">${esc(n)}</span>${rd}</span><span class="ok" title="On the card">${SVG.check}</span>`;
-  t.title = inPlace ? n : '';
-  t.addEventListener('mouseenter', () => inspect(n));
-  t.addEventListener('focus', () => inspect(n));
-  t.addEventListener('dragstart', e => {
-    drag = { n, from: inPlace };
-    e.dataTransfer.setData('text/plain', n);
-    e.dataTransfer.effectAllowed = 'move';
-    requestAnimationFrame(() => t.classList.add('dragging'));
-    $$('.zone').forEach(z => z.classList.add(accepts(z.dataset.place, n) ? 'can-drop' : 'no-drop'));
-  });
-  t.addEventListener('dragend', () => {
-    drag = null;
-    t.classList.remove('dragging');
-    $$('.zone').forEach(z => z.classList.remove('can-drop', 'no-drop'));
-    $$('.marker').forEach(m => m.remove());
-  });
-  if (inPlace) {
-    t.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); commit(() => removeEverywhere(n)); });
-    t.addEventListener('click', e => { e.stopPropagation(); select(n); const w = where(n); if (w) setActive(w.place, w.row); });
-    t.addEventListener('keydown', e => {
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); commit(() => removeEverywhere(n)); }
-      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); nudge(n, e.key === 'ArrowLeft' ? -1 : 1); }
-    });
-  } else {
-    t.addEventListener('click', () => addToActive(n));
-    t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addToActive(n); } });
-  }
-  return t;
-}
-function select(n) { selected = n; inspect(n); $$('.zone .tile').forEach(t => t.classList.toggle('sel', t.dataset.name === n)); }
-function inspect(n) {
-  const k = kindOf(n), w = where(n);
-  const can = Object.keys(S.places).filter(p => accepts(p, n)).map(p => PLACE[p]).join(', ');
-  const pv = R?.previews?.[n] || [];
-  $('#inspector').innerHTML = `<div class="label">Details</div>
-    <div class="t">${esc(n)} <span class="badge">${KIND[k]}</span>${w ? `<span class="badge ok"><span class="dot"></span>${w.place === 'rows' ? 'row ' + (w.row + 1) : w.place.replace('_', ' ')}</span>` : ''}</div>
-    <p>${esc(S.what[n] || '')}</p>
-    <div class="big">${pv.length ? html(pv) : '<span class="d">nothing to show in this sample</span>'}</div>
-    <p class="where">Goes on ${esc(can)}. No tokens: the status line never reaches the model.</p>`;
-}
-
-/* places */
-function insertIndex(zone, x, y) {
-  const tiles = $$('.tile', zone).filter(t => !t.classList.contains('dragging'));
-  for (let i = 0; i < tiles.length; i++) {
-    const r = tiles[i].getBoundingClientRect();
-    if (y < r.top) return i;
-    if (y <= r.bottom && x < r.left + r.width / 2) return i;
-  }
-  return tiles.length;
-}
-function wire(zone) {
-  const t = () => ({ place: zone.dataset.place, row: +zone.dataset.row || 0 });
-  zone.addEventListener('click', () => setActive(t().place, t().row));
-  zone.addEventListener('keydown', e => { if (e.target === zone && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setActive(t().place, t().row); } });
-  zone.addEventListener('dragover', e => {
-    if (!drag || !accepts(zone.dataset.place, drag.n)) return;
-    e.preventDefault();
-    $$('.marker').forEach(m => m.remove());
-    const tiles = $$('.tile', zone).filter(x => !x.classList.contains('dragging'));
-    const m = document.createElement('span');
-    m.className = 'marker';
-    zone.insertBefore(m, tiles[insertIndex(zone, e.clientX, e.clientY)] || null);
-  });
-  zone.addEventListener('dragleave', e => { if (!zone.contains(e.relatedTarget)) $$('.marker', zone).forEach(m => m.remove()); });
-  zone.addEventListener('drop', e => {
-    if (!drag || !accepts(zone.dataset.place, drag.n)) return;
-    e.preventDefault();
-    setActive(t().place, t().row);
-    place(drag.n, t(), insertIndex(zone, e.clientX, e.clientY));
-  });
-}
 function setActive(place, row) {
   active = { place, row };
   $$('.zone').forEach(z => z.classList.toggle('active', z.dataset.place === place && (+z.dataset.row || 0) === row));
 }
+function landed(n) { requestAnimationFrame(() => $(`.zone .tile[data-name="${CSS.escape(n)}"]`)?.classList.add('landed')); }
+
+/* tiles */
+function tile(n, inTray) {
+  const t = document.createElement('div');
+  t.className = `tile ${kindOf(n)}${inTray && placed().has(n) ? ' placed' : ''}`;
+  t.dataset.name = n;
+  t.tabIndex = 0;
+  t.setAttribute('role', 'button');
+  const pv = R?.previews?.[n] || [];
+  t.innerHTML = `<span class="grip" aria-hidden="true"></span><span class="dot" aria-hidden="true"></span><span class="rd">${pv.length ? html(pv) : esc(n)}</span>` +
+    (inTray ? '' : `<button class="x" tabindex="-1" aria-label="Take ${esc(n)} off the card">${X}</button>`);
+  t.addEventListener('pointerdown', e => press(e, n, t, !inTray));
+  if (inTray) {
+    t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addToActive(n); } });
+  } else {
+    t.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); commit(() => removeEverywhere(n)); });
+    t.addEventListener('keydown', e => {
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); commit(() => removeEverywhere(n)); }
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); nudge(n, e.key === 'ArrowLeft' ? -1 : 1); }
+    });
+  }
+  return t;
+}
+
+/* dragging with pointer events: the tile lifts and follows the pointer, a slot opens where it would land and the
+   others slide aside; dropping flies it into the slot, dropping it on the tray takes it off the card */
+function press(e, n, el, fromZone) {
+  if (e.button !== 0 || e.target.closest('.x')) return;
+  const r = el.getBoundingClientRect();
+  drag = { n, el, fromZone, x0: e.clientX, y0: e.clientY, ox: e.clientX - r.left, oy: e.clientY - r.top, w: r.width, home: r, on: false, slot: null };
+  addEventListener('pointermove', move);
+  addEventListener('pointerup', up, { once: true });
+  addEventListener('pointercancel', cancel, { once: true });
+}
+function begin() {
+  const d = drag;
+  d.on = true;
+  d.ghost = document.createElement('div');
+  d.ghost.className = 'ghost';
+  const c = d.el.cloneNode(true);
+  c.classList.remove('placed', 'landed');
+  c.style.width = d.w + 'px';
+  d.ghost.append(c);
+  document.body.append(d.ghost);
+  requestAnimationFrame(() => c.classList.add('up'));
+  document.body.classList.add('dragging');
+  for (const z of $$('.zone')) z.classList.add(accepts(z.dataset.place, d.n) ? 'can' : 'cannot');
+  if (d.fromZone) {  // the tile leaves its place: a slot keeps the space
+    d.slot = slot(d.w);
+    d.el.replaceWith(d.slot);
+  }
+}
+function slot(w) { const s = document.createElement('div'); s.className = 'slot'; s.style.width = w + 'px'; return s; }
+function flip(scope, mutate) {  // animate every tile in scope from where it was to where the change puts it
+  const tiles = scope.flatMap(z => z ? $$('.tile, .slot', z) : []);
+  const before = new Map(tiles.map(t => [t, t.getBoundingClientRect()]));
+  mutate();
+  for (const [t, r] of before) {
+    if (!t.isConnected) continue;
+    const r2 = t.getBoundingClientRect(), dx = r.left - r2.left, dy = r.top - r2.top;
+    if (dx || dy) t.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+}
+function scrollerOf(el) {
+  for (; el && el !== document.body; el = el.parentElement)
+    if (el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(el).overflowY)) return el;
+  return null;
+}
+function slotIndex(zone, x, y) {
+  const tiles = $$('.tile', zone).filter(t => t.dataset.name !== drag.n);
+  for (let i = 0; i < tiles.length; i++) {
+    const r = tiles[i].getBoundingClientRect();
+    if (y < r.top) return [i, tiles];
+    if (y <= r.bottom && x < r.left + r.width / 2) return [i, tiles];
+  }
+  return [tiles.length, tiles];
+}
+function move(e) {
+  const d = drag;
+  if (!d) return;
+  if (!d.on) { if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 5) return; begin(); }
+  d.ghost.style.transform = `translate(${e.clientX - d.ox}px, ${e.clientY - d.oy}px)`;
+  const hit = document.elementFromPoint(e.clientX, e.clientY), box = scrollerOf(hit);
+  if (box) {  // near the top or bottom of a box that scrolls, it scrolls
+    const r = box.getBoundingClientRect();
+    box.scrollTop += e.clientY < r.top + 50 ? -14 : e.clientY > r.bottom - 50 ? 14 : 0;
+  }
+  const zone = hit?.closest('.zone'), overTray = !!hit?.closest('#tray');
+  $$('.zone.over').forEach(z => z !== zone && z.classList.remove('over'));
+  $('#tray').classList.toggle('remove', overTray && d.fromZone);
+  if (zone && accepts(zone.dataset.place, d.n)) {
+    zone.classList.add('over');
+    const [i, tiles] = slotIndex(zone, e.clientX, e.clientY);
+    d.slot = d.slot || slot(d.w);
+    const ref = tiles[i] || null;
+    if (d.slot.parentElement === zone && (ref ? d.slot.nextElementSibling === ref : !d.slot.nextElementSibling)) return;
+    flip([d.slot.parentElement, zone], () => zone.insertBefore(d.slot, ref));
+  } else if (overTray && d.slot?.parentElement) {
+    flip([d.slot.parentElement], () => d.slot.remove());
+  }
+}
+function finish() {
+  removeEventListener('pointermove', move);
+  document.body.classList.remove('dragging');
+  $$('.zone').forEach(z => z.classList.remove('can', 'cannot', 'over'));
+  $('#tray').classList.remove('remove');
+}
+function fly(d, rect, done) {
+  const from = d.ghost.style.transform;
+  const to = rect ? `translate(${rect.left}px, ${rect.top}px)` : `${from} scale(.85)`;
+  d.ghost.firstChild.classList.remove('up');
+  const a = d.ghost.animate([{ transform: from, opacity: 1 }, { transform: to, opacity: rect ? 1 : 0 }],
+    { duration: rect ? 200 : 170, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
+  a.onfinish = () => { d.ghost.remove(); done(); };
+}
+function up(e) {
+  const d = drag;
+  drag = null;
+  removeEventListener('pointercancel', cancel);
+  if (!d) return;
+  if (!d.on) {  // a click, not a drag
+    removeEventListener('pointermove', move);
+    if (d.fromZone) { const w = where(d.n); if (w) setActive(w.place, w.row); d.el.focus(); } else addToActive(d.n);
+    return;
+  }
+  const overTray = !!document.elementFromPoint(e.clientX, e.clientY)?.closest('#tray');
+  finish();
+  if (overTray && d.fromZone) return fly(d, null, () => commit(() => removeEverywhere(d.n)));
+  const zone = d.slot?.parentElement?.closest('.zone');
+  if (!zone) return fly(d, d.home, drawLayout);
+  const t = { place: zone.dataset.place, row: +zone.dataset.row || 0 };
+  const i = [...zone.children].filter(c => c === d.slot || (c.classList.contains('tile') && c.dataset.name !== d.n)).indexOf(d.slot);
+  fly(d, d.slot.getBoundingClientRect(), () => { setActive(t.place, t.row); placeAt(d.n, t, i); });
+}
+function cancel() { const d = drag; drag = null; if (!d) return; finish(); d.ghost?.remove(); drawLayout(); }
 
 /* drawing */
 function drawLayout() {
   const rows = $('#rows');
   rows.innerHTML = '';
-  cfg.rows.forEach((names, i) => {
+  cfg.rows.forEach((_, i) => {
     const r = document.createElement('div');
     r.className = 'row';
-    r.innerHTML = `<span class="rlabel">Row ${i + 1}</span>
-      <div class="zone" data-place="rows" data-row="${i}" tabindex="0"></div>
-      <span class="tools">
-        <button class="btn sm ghost icon" data-a="-1" aria-label="Move row ${i + 1} up" title="Move up" ${i ? '' : 'disabled'}>${SVG.up}</button>
-        <button class="btn sm ghost icon" data-a="1" aria-label="Move row ${i + 1} down" title="Move down" ${i < cfg.rows.length - 1 ? '' : 'disabled'}>${SVG.down}</button>
-        <button class="btn sm ghost icon" data-a="x" aria-label="Delete row ${i + 1}" title="Delete row">${SVG.x}</button></span>`;
-    r.querySelector('.tools').addEventListener('click', e => {
-      const a = e.target.closest('button')?.dataset.a;
-      if (!a) return;
-      if (a === 'x') commit(() => cfg.rows.splice(i, 1));
-      else commit(() => { const j = i + +a; [cfg.rows[i], cfg.rows[j]] = [cfg.rows[j], cfg.rows[i]]; });
-      setActive('rows', Math.max(0, Math.min(cfg.rows.length - 1, a === 'x' ? i - 1 : i + +a)));
-    });
+    r.innerHTML = `<span class="n">${i + 1}</span><div class="zone" data-place="rows" data-row="${i}" tabindex="0"></div>
+      <button class="del" aria-label="Delete row ${i + 1}" title="Delete row">${X}</button>`;
+    r.querySelector('.del').addEventListener('click', () => { commit(() => cfg.rows.splice(i, 1)); setActive('rows', Math.max(0, i - 1)); });
     rows.appendChild(r);
-    wire($('.zone', r));
   });
   for (const z of $$('.zone')) {
-    $$('.tile, .empty', z).forEach(e => e.remove());
+    $$('.tile, .empty, .slot', z).forEach(e => e.remove());
     const names = listOf(z.dataset.place, +z.dataset.row || 0);
-    names.forEach(n => z.appendChild(tile(n, true)));
-    if (!names.length) z.insertAdjacentHTML('beforeend', '<span class="empty">Drop here</span>');
+    names.forEach(n => z.appendChild(tile(n, false)));
+    if (!names.length) z.insertAdjacentHTML('beforeend', '<span class="empty">Drop elements here</span>');
+    z.onclick = e => { if (e.target === z || e.target.classList.contains('empty') || e.target.classList.contains('tag')) setActive(z.dataset.place, +z.dataset.row || 0); };
   }
   setActive(active.place, Math.min(active.row, Math.max(0, cfg.rows.length - 1)));
 }
-
-function drawLibrary() {
-  const q = $('#filter').value.trim().toLowerCase(), used = placed();
-  const match = n => !q || n.includes(q) || (S.what[n] || '').toLowerCase().includes(q);
-  $('#tabs').innerHTML = [['all', 'All', total()], ...Object.entries(KIND).map(([k, l]) => [k, l, S.kinds[k].length])]
-    .map(([k, l, n]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'on' : ''}" data-tab="${k}">${l}<span class="count">${n}</span></button>`).join('');
-  const lib = $('#lib');
-  lib.innerHTML = '';
-  for (const k of Object.keys(KIND)) {
-    if (tab !== 'all' && tab !== k) continue;
-    const names = S.kinds[k].filter(match).sort((a, b) => used.has(a) - used.has(b));
-    if (!names.length) continue;
-    lib.insertAdjacentHTML('beforeend', `<div class="group-title label">${KIND[k]}<span class="count">${S.kinds[k].filter(n => used.has(n)).length}/${S.kinds[k].length} on the card</span></div>`);
-    names.forEach(n => lib.appendChild(tile(n, false)));
-  }
-  if (!lib.children.length) lib.innerHTML = '<p style="color:var(--faint);font-size:12.5px">Nothing matches.</p>';
+function groups() {
+  const named = new Set(GROUPS.flatMap(g => g[2] || []));
+  return GROUPS.map(([title, k, names]) => [title, k, names ? names.filter(n => S.kinds[k].includes(n)) : S.kinds[k].filter(n => !named.has(n))])
+    .filter(g => g[2].length);
 }
-
-function drawStats() {
-  const p = S.palettes[cfg.palette], used = placed().size;
-  const lines = R ? R.lines.length : 0;
-  const card = (label, icon, color, v, sub) => `<div class="card stat"><div class="label">${label}</div><span style="color:${color}">${icon}</span><div class="v">${v}<small>${sub}</small></div></div>`;
-  $('#stats').innerHTML =
-    card('Card width', SVG.width, 'var(--k-text)', R ? R.width : '…', R ? `of ${R.columns} columns` : '') +
-    card('Rows', SVG.rows, 'var(--k-meter)', cfg.rows.length, lines ? `${lines} lines drawn now` : '') +
-    card('Elements', SVG.grid, 'var(--k-chip)', `${used}<span style="color:var(--faint);font-weight:400">/${total()}</span>`, 'on the card') +
-    card('Palette', SVG.palette, 'var(--accent)', esc(cfg.palette), `<span class="sw">${['accent', 'green', 'yellow', 'red', 'purple', 'blue'].map(k => `<i style="background:${rgb(p[k])}"></i>`).join('')}</span>`);
-}
-
-function drawLook() {
-  const box = $('#palettes');
+function drawTray() {
+  const box = $('#groups'), top = box.scrollTop, on = placed();
   box.innerHTML = '';
-  for (const [name, p] of Object.entries(S.palettes)) {
-    const b = document.createElement('button');
-    b.className = 'pal' + (cfg.palette === name ? ' on' : '');
-    b.style.setProperty('--pa', rgb(p.accent));
-    b.setAttribute('aria-pressed', cfg.palette === name);
-    b.innerHTML = `<div class="top"><span class="name">${SVG.check}${esc(name)}</span><span class="sw">${['accent', 'green', 'yellow', 'orange', 'red', 'purple', 'blue', 'teal']
-      .map(k => `<i style="background:${rgb(p[k])}"></i>`).join('')}</span></div><div class="rd">${R ? html(R.palettes[name]) : ''}</div>`;
-    b.addEventListener('click', () => { if (cfg.palette !== name) commit(() => { cfg.palette = name; }); });
-    box.appendChild(b);
+  for (const [title, k, names] of groups()) {
+    const g = document.createElement('section'), open = !folded.has(title), id = 'g-' + title.toLowerCase(), c = names.filter(n => on.has(n)).length;
+    g.className = 'group';
+    g.innerHTML = `<button class="fold" aria-expanded="${open}" aria-controls="${id}" style="--k:var(--k-${k})">` +
+      `<svg class="i chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="kdot"></span>${title}` +
+      `<span class="count" title="${c} of ${names.length} on the card"><b>${c}</b>/${names.length}</span></button>` +
+      `<div class="fold-body" id="${id}"${open ? '' : ' hidden'}><div class="cloud"></div></div>`;
+    names.forEach(n => $('.cloud', g).appendChild(tile(n, true)));
+    $('.fold', g).addEventListener('click', () => fold(g, title));
+    box.appendChild(g);
   }
-  const a = S.palettes[cfg.palette].accent;
-  document.documentElement.style.setProperty('--accent', rgb(a));
-  document.documentElement.style.setProperty('--accent-muted', `rgba(${a[0]},${a[1]},${a[2]},.15)`);
-  $('#bars').value = cfg.meter;
-  $('#barsVal').innerHTML = `${cfg.meter}<small>bars</small>`;
-  $('#barsRd').innerHTML = R ? html(R.previews.ctx || []) : '';
+  box.scrollTop = top;
+  edges();
+  if (tipFor && !tipFor.isConnected) hideTip();
+}
+// a group folds or opens by animating its height; `folded` keeps the choice across redraws
+function fold(g, title) {
+  const body = $('.fold-body', g), open = folded.has(title);
+  open ? folded.delete(title) : folded.add(title);
+  $('.fold', g).setAttribute('aria-expanded', open);
+  body.getAnimations().forEach(x => x.cancel());  // a second click turns it around midway
+  body.hidden = false;
+  const h = body.scrollHeight + 'px';
+  body.style.overflow = 'hidden';
+  const a = body.animate([{ height: open ? '0px' : h, opacity: +!open }, { height: open ? h : '0px', opacity: +open }],
+    { duration: 260, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'forwards' });
+  a.onfinish = () => { body.hidden = !open; body.style.overflow = ''; a.cancel(); edges(); };
+}
+function edges() {
+  for (const b of $$('.scroller')) {
+    b.classList.toggle('fade-t', b.scrollTop > 2);
+    b.classList.toggle('fade-b', b.scrollTop + b.clientHeight < b.scrollHeight - 2);
+  }
 }
 
-function drawStatus() {
+/* documentation: what an element shows, where it goes and where it is, on hover or keyboard focus */
+const tip = Object.assign(document.createElement('div'), { className: 'tip', id: 'tip' });
+tip.setAttribute('role', 'tooltip');
+document.body.append(tip);
+let tipFor = null, tipTimer = 0, tipLast = 0;
+const placeName = w => !w ? 'Not yet' : w.place === 'rows' ? `Row ${w.row + 1}` : PLACE[w.place];
+function showTip(el) {
+  const n = el.dataset.name, k = kindOf(n), w = where(n), what = S.what[n] || n;
+  tipFor = el;
+  el.setAttribute('aria-describedby', 'tip');
+  tip.style.setProperty('--k', `var(--k-${k})`);
+  tip.innerHTML = `<div class="tip-h"><span class="dot"></span><b>${esc(n)}</b><small>${k}</small></div>` +
+    `<p>${esc(what[0].toUpperCase() + what.slice(1))}.</p>` +
+    `<dl><dt>Goes on</dt><dd>${Object.keys(S.places).filter(p => accepts(p, n)).map(p => PLACE[p]).join(', ')}</dd>` +
+    `<dt>On the card</dt><dd>${placeName(w)}</dd></dl>` +
+    `<div class="act">${el.closest('#tray') ? `Click to ${w ? 'move' : 'add'} it to ${placeName(target(n))}, or drag it`
+      : '<kbd>Del</kbd> takes it off, <kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd> moves it'}</div>`;
+  const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(r.left + r.width / 2 - t.width / 2, innerWidth - t.width - 8)) + 'px';
+  tip.style.top = (r.top - t.height - 10 >= 8 ? r.top - t.height - 10 : r.bottom + 10) + 'px';
+  tip.classList.add('show');
+}
+function hideTip() {
+  clearTimeout(tipTimer);
+  if (!tipFor) return;
+  tipFor.removeAttribute('aria-describedby');
+  tipFor = null;
+  tipLast = Date.now();
+  tip.classList.remove('show');
+}
+document.addEventListener('pointerover', e => {
+  const el = e.target.closest?.('.tile');
+  if (!el || el === tipFor || drag || e.pointerType === 'touch') return;
+  hideTip();
+  tipTimer = setTimeout(() => showTip(el), Date.now() - tipLast < 400 ? 0 : 350);  // moving between tiles shows the next at once
+});
+document.addEventListener('pointerout', e => {
+  const el = e.target.closest?.('.tile');
+  if (el && !el.contains(e.relatedTarget)) el === tipFor ? hideTip() : clearTimeout(tipTimer);
+});
+document.addEventListener('focusin', e => { const el = e.target.closest?.('.tile'); if (el?.matches(':focus-visible') && !drag) { hideTip(); showTip(el); } });
+document.addEventListener('focusout', e => { if (e.target === tipFor) hideTip(); });
+document.addEventListener('pointerdown', hideTip, true);
+document.addEventListener('scroll', e => { hideTip(); if (e.target.classList?.contains('scroller')) edges(); }, { capture: true, passive: true });
+new ResizeObserver(() => edges()).observe($('.editor'));
+function drawLook() {
+  $('#pals').innerHTML = Object.entries(S.palettes).map(([name, p]) =>
+    `<button class="pal${cfg.palette === name ? ' on' : ''}" data-p="${esc(name)}" aria-pressed="${cfg.palette === name}">` +
+    `<span class="sw">${['accent', 'green', 'yellow', 'red', 'blue'].map(k => `<i style="background:${rgb(p[k])}"></i>`).join('')}</span>${esc(name)}</button>`).join('');
+  $('#barsOut').innerHTML = `<b>${cfg.meter}</b> bars`;
+  $('#barsDown').disabled = cfg.meter <= 3;
+  $('#barsUp').disabled = cfg.meter >= 30;
+}
+function drawState(text) {
   const dirty = snap(cfg) !== snap(saved);
-  const st = $('#status');
-  st.className = 'badge ' + (dirty ? 'warn' : 'ok');
-  st.innerHTML = `<span class="dot"></span>${dirty ? 'Unsaved' : 'Saved'}`;
-  $('#save').disabled = $('#revert').disabled = !dirty;
+  $('#state').className = 'state' + (dirty ? ' dirty' : '');
+  $('#state').textContent = text || (dirty ? 'Unsaved changes' : 'Saved');
+  $('#save').disabled = !dirty;
   $('#undo').disabled = !past.length;
-  $('#redo').disabled = !future.length;
 }
-
-/* the terminal around the card */
 function drawScreen() {
   if (!R) return;
-  const cols = R.columns, rc = $('#rc').checked;
-  const pad = n => [[' '.repeat(Math.max(0, n)), null, false, false]];
-  const hint = 'Try "make the card calmer"';
+  const cols = R.columns, pad = n => [[' '.repeat(Math.max(0, n)), null, false, false]], hint = 'Try "make the card calmer"';
   const lines = [
-    [['● ', [215, 119, 87], false, false], ['Saved. The card reads its settings on its next run.', null, false, false]],
-    [],
     [['╭' + '─'.repeat(cols - 2) + '╮', PROMPT, false, false]],
     [['│', PROMPT, false, false], [' > ', null, false, false], [hint, null, true, false], ...pad(cols - 5 - hint.length), ['│', PROMPT, false, false]],
     [['╰' + '─'.repeat(cols - 2) + '╯', PROMPT, false, false]],
   ];
-  R.lines.forEach((line, i) => {
-    const row = [...pad(2), ...line];
-    if (i === 0 && rc && cols >= 60) row.push(...pad(1), ['/rc', null, true, false]);
-    lines.push(row);
-  });
-  lines.push([...pad(2), ['⏵⏵ auto mode on', MODE_COLOR, false, false], [' (shift+tab to cycle)', null, true, false]]);
+  R.lines.forEach((line, i) => lines.push(i === 0 && cols >= 60 ? [...pad(2), ...line, ...pad(1), ['/rc', null, true, false]] : [...pad(2), ...line]));
+  lines.push([...pad(2), ['⏵⏵ auto mode on', MODE, false, false], [' (shift+tab to cycle)', null, true, false]]);
   const screen = $('#screen');
   screen.innerHTML = lines.map(l => `<div class="ln">${html(l, true)}</div>`).join('');
-  screen.style.fontSize = zoom === 'real' ? '13.5px' : Math.max(7, Math.min(13.5, (screen.clientWidth - 8) / (cols * 0.602))) + 'px';
-  $('#previewNote').textContent = `card ${R.width} columns in a ${cols}-column terminal${rc && cols >= 60 ? ' · 4 left for /rc' : ''}`;
+  screen.style.fontSize = Math.max(8, Math.min(20, (screen.clientWidth - 16) / (cols * 0.602))) + 'px';  // as large as the width allows, up to 20px
 }
-
-/* server */
 function refresh() {
-  drawLayout(); drawLibrary(); drawLook(); drawStats(); drawStatus();
-  if (selected) inspect(selected);
+  drawLayout(); drawTray(); drawLook(); drawState();
   clearTimeout(timer);
-  timer = setTimeout(preview, 50);
+  timer = setTimeout(preview, 40);
 }
 async function preview() {
-  const n = ++seq, columns = +$('#cols').value;
-  $('#colsOut').textContent = columns + ' col';
-  $$('[data-out]').forEach(o => { o.textContent = knobs[o.dataset.out] + '%'; });
+  const n = ++seq, columns = Math.max(40, Math.min(240, S.columns));
   try {
-    const r = await api('/api/render', { cfg, columns, rc: $('#rc').checked, sample: knobs });
+    const r = await api('/api/render', { cfg, columns, rc: true });
     if (n !== seq) return;
     R = { ...r, columns };
-    drawScreen(); drawLayout(); drawLibrary(); drawLook(); drawStats();
-    if (selected) inspect(selected);
-  } catch (e) { serverGone(); }
+    drawScreen();
+    const s = $('#screen'); s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash');
+    const pv = snap(r.previews);  // tiles show the card's own rendering: redraw them only when it changed (palette, bars)
+    if (!drag && pv !== preview.last) { preview.last = pv; drawLayout(); drawTray(); }
+  } catch (e) { gone(); }
 }
 async function save() {
   try {
     const r = await api('/api/save', { cfg });
     cfg = r.cfg; saved = JSON.parse(snap(cfg));
     refresh();
-    toast(`Saved to ${r.path}. The card picks it up within a second.`);
-  } catch (e) { serverGone(); }
+    drawState('Saved · the card picks it up within a second');
+  } catch (e) { gone(); }
 }
-function toast(msg) {
-  $('#toastText').textContent = msg;
-  $('#toast').classList.add('show');
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => $('#toast').classList.remove('show'), 3500);
-}
-function serverGone() { $('#gone').classList.add('show'); $('#live').classList.add('off'); $('#live').textContent = 'Stopped'; }
+function gone() { $('#gone').classList.add('show'); $('#state').className = 'state gone'; $('#state').textContent = 'Server stopped'; }
 setInterval(async () => {
-  try { await api('/api/ping', {}); misses = 0; $('#gone').classList.remove('show'); $('#live').classList.remove('off'); $('#live').textContent = 'Live'; }
-  catch (e) { if (++misses >= 2) serverGone(); }
+  try { await api('/api/ping', {}); misses = 0; $('#gone').classList.remove('show'); } catch (e) { if (++misses >= 2) gone(); }
 }, 5000);
 addEventListener('pagehide', () => navigator.sendBeacon('/api/bye', ''));
 addEventListener('resize', drawScreen);
@@ -692,53 +632,20 @@ addEventListener('resize', drawScreen);
 (async () => {
   S = await api('/api/state');
   cfg = JSON.parse(snap(S.cfg)); saved = JSON.parse(snap(S.cfg));
-  $('#addr').textContent = location.host;
-  $('#file').textContent = S.saveTo.replace(/^\/home\/[^/]+/, '~');
-  $('#file').title = S.saveTo;
-  const yours = Math.max(40, Math.min(240, S.columns));
-  $('#cols').value = yours;
-  $('#presets').innerHTML = [80, 120, 160, yours].filter((v, i, a) => a.indexOf(v) === i)
-    .map(v => `<button data-w="${v}">${v === yours ? 'Yours · ' + v : v}</button>`).join('');
-  const markPreset = () => $$('#presets button').forEach(b => b.classList.toggle('on', +b.dataset.w === +$('#cols').value));
-  $('#presets').addEventListener('click', e => { const w = e.target.closest('button')?.dataset.w; if (w) { $('#cols').value = w; markPreset(); preview(); } });
-  $('#cols').addEventListener('input', () => { markPreset(); preview(); });
-  markPreset();
-  $$('[data-knob]').forEach(k => {
-    k.value = knobs[k.dataset.knob];
-    k.addEventListener('input', () => { knobs[k.dataset.knob] = +k.value; preview(); });
-  });
-  $('#resetKnobs').addEventListener('click', () => { Object.assign(knobs, SAMPLE); $$('[data-knob]').forEach(k => { k.value = knobs[k.dataset.knob]; }); preview(); });
-  $('#rc').addEventListener('change', preview);
-  $('#zoom').addEventListener('click', e => {
-    const z = e.target.closest('button')?.dataset.z;
-    if (!z) return;
-    zoom = z;
-    $$('#zoom button').forEach(b => b.classList.toggle('on', b.dataset.z === z));
-    drawScreen();
-  });
-  $('#tabs').addEventListener('click', e => { const k = e.target.closest('button')?.dataset.tab; if (k) { tab = k; drawLibrary(); } });
-  $$('.edge .zone').forEach(wire);
-  const side = $('#sideBody');
-  side.addEventListener('dragover', e => { if (drag?.from) e.preventDefault(); });
-  side.addEventListener('drop', e => { if (drag?.from) { e.preventDefault(); commit(() => removeEverywhere(drag.n)); } });
-  $('#filter').addEventListener('input', drawLibrary);
   $('#addRow').addEventListener('click', () => { commit(() => cfg.rows.push([])); setActive('rows', cfg.rows.length - 1); });
-  $('#bars').addEventListener('input', e => { $('#barsVal').innerHTML = `${e.target.value}<small>bars</small>`; });
-  $('#bars').addEventListener('change', e => { const v = +e.target.value; if (v !== cfg.meter) commit(() => { cfg.meter = v; }); });
+  $('#pals').addEventListener('click', e => { const p = e.target.closest('.pal')?.dataset.p; if (p && p !== cfg.palette) commit(() => { cfg.palette = p; }); });
+  $('#barsDown').addEventListener('click', () => commit(() => { cfg.meter = Math.max(3, cfg.meter - 1); }));
+  $('#barsUp').addEventListener('click', () => commit(() => { cfg.meter = Math.min(30, cfg.meter + 1); }));
   $('#save').addEventListener('click', save);
-  $('#revert').addEventListener('click', () => commit(() => { cfg = JSON.parse(snap(saved)); }));
-  $('#defaults').addEventListener('click', () => commit(() => { cfg = JSON.parse(snap(S.default)); }));
   $('#undo').addEventListener('click', undo);
-  $('#redo').addEventListener('click', redo);
   document.addEventListener('keydown', e => {
     const mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
     if (mod && key === 's') { e.preventDefault(); if (snap(cfg) !== snap(saved)) save(); }
-    else if (mod && key === 'z' && !e.target.matches('input[type=search]')) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
-    else if (mod && key === 'y') { e.preventDefault(); redo(); }
+    else if (mod && key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if (e.key === 'Escape') { if (drag) cancel(); hideTip(); }
   });
   refresh();
-  $('.main').classList.add('fade');
-})().catch(() => serverGone());
+})().catch(gone);
 </script>
 </body>
 </html>

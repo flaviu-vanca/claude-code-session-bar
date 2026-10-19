@@ -332,10 +332,10 @@ with tempfile.TemporaryDirectory() as t:  # saved whole, through a temporary fil
     assert sb.load_config(path) == cfg and os.listdir(t) == ['session-bar.json'], os.listdir(t)
 c = web.clean({'rows': [['ctx', 'bogus', 'rc'], ['repo']], 'edge': ['rc', 'ctx'], 'palette': 'nord', 'meter': 99})
 assert c['rows'] == [['ctx'], ['repo']] and c['edge'] == ['rc'] and c['palette'] == 'nord' and c['meter'] == 30, c
-d = web.sample({'ctx': 150, '5h': 42.5, 'week': 'x'})
-assert d['context_window']['used_percentage'] == 100 and d['rate_limits']['five_hour']['used_percentage'] == 42.5, d
-assert d['rate_limits']['seven_day']['used_percentage'] == web.SAMPLE['rate_limits']['seven_day']['used_percentage']
-assert web.SAMPLE['context_window']['used_percentage'] != 100  # the sample itself is left as it was
+before = json.dumps(web.SAMPLE)
+d = web.sample()  # the sample with its clocks moved to now, so its resets stay as far off as written
+far = web.SAMPLE['rate_limits']['five_hour']['resets_at'] - web.NOW
+assert abs(d['rate_limits']['five_hour']['resets_at'] - time.time() - far) < 5 and json.dumps(web.SAMPLE) == before
 for cols, rc in ((188, True), (188, False), (59, True), (40, False)):
     r = web.render(c, cols, rc, d)
     assert r['width'] == sb.card_width(cols, rc) and all(sum(len(p[0]) for p in l) == r['width'] for l in r['lines']), (cols, rc)
@@ -343,8 +343,6 @@ pv = web.previews(c, d)
 flat = lambda pieces: ''.join(p[0] for p in pieces)
 assert set(pv) == set(sb.TEXT + sb.METERS + sb.CHIPS), set(pv) ^ set(sb.TEXT + sb.METERS + sb.CHIPS)
 assert flat(pv['ctx']).startswith('ctx ▰') and flat(pv['repo']).startswith('⎇ ') and flat(pv['rc']).endswith('rc'), pv['rc']
-pal = web.palette_rows(c, d)
-assert set(pal) == set(sb.PALETTES) and pal['nord'] != pal['dracula'] and flat(pal['nord']).startswith('ctx ▰'), pal['nord']
 H = {'127.0.0.1:8790'}
 assert web.trusted('127.0.0.1:8790', None, 'GET', H) and web.trusted('127.0.0.1:8790', 'http://127.0.0.1:8790', 'POST', H)
 assert not web.trusted('evil.example:8790', None, 'GET', H) and not web.trusted('127.0.0.1:8790', 'http://evil.example', 'POST', H)
@@ -368,8 +366,10 @@ with tempfile.TemporaryDirectory() as t:
         base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **h}), timeout=5)
     st = json.load(urllib.request.urlopen(base + '/api/state', timeout=5))
     assert st['cfg'] == sb.load_config(web.SAVE) and set(st['palettes']) == set(sb.PALETTES), st['cfg']
-    got = json.load(post('/api/render', {'cfg': {'rows': [['week']]}, 'columns': 120, 'rc': True, 'sample': {'week': 91}}))
-    assert got['width'] == 112 and flat(got['lines'][1]).startswith('│ week ▰▰▰▰▰▰▰▰▰▱ 92%') and set(got['previews']) == set(pv), got['lines'][1]
+    assert set(st) == {'cfg', 'kinds', 'places', 'what', 'palettes', 'columns'}, set(st)  # what the page reads
+    got = json.load(post('/api/render', {'cfg': {'rows': [['week']]}, 'columns': 120, 'rc': True}))
+    assert got['width'] == 112 and flat(got['lines'][1]).startswith('│ week ▰▰▰▰▰▰▰▱▱▱ 69%') and set(got['previews']) == set(pv), got['lines'][1]
+    assert set(got) == {'cfg', 'width', 'lines', 'previews'}, set(got)
     try:
         post('/api/save', {'cfg': c}, Origin='http://evil.example')
         raise AssertionError('a foreign page saved the settings')
