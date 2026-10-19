@@ -98,6 +98,15 @@ pc = lambda **k: texts(sb.chips({'prompt_cache': k}, {}, NOW))
 assert pc(warm=True, expires_at=NOW + 90) == ['◷ cache 1m'] and pc(warm=True, expires_at=NOW + 45) == ['◷ cache 45s']
 assert pc(warm=True, expires_at=NOW + 600) == [] and pc(warm=True, expires_at=None) == []
 assert pc(warm=False, caching_observed=True) == ['◷ cache cold'] and pc(warm=False, caching_observed=False) == []
+# in brackets, what the next request costs once the cache is gone
+assert pc(warm=True, expires_at=NOW + 90, recache_tokens_if_cold=843_000) == ['◷ cache 1m (843k)']
+assert pc(warm=False, caching_observed=True, recache_tokens_if_cold=1_200_000) == ['◷ cache cold (1.2M)']
+assert pc(warm=True, expires_at=NOW + 90, recache_tokens_if_cold=0) == ['◷ cache 1m']
+# a cache miss shows for 5 minutes, with its first cause in short words and how many more there were
+miss = lambda ago, *causes: pc(last_miss_at=NOW - ago, last_miss_cause={'causes': list(causes)})
+assert miss(120, 'ttl_expired_5m') == ['✗ cache miss: idle 5m'] and miss(301, 'ttl_expired_5m') == [] and miss(-5) == []
+assert miss(0, 'tools_changed', 'system_prompt_changed') == ['✗ cache miss: tools +1'] and miss(10) == ['✗ cache miss: unknown']
+assert miss(10, 'a_new_cause') == ['✗ cache miss: a_new_cause']
 
 
 def pr(state=None, kind=None):
@@ -160,6 +169,43 @@ with tempfile.TemporaryDirectory() as t:
     with open(head, 'w') as f:
         f.write('ref: refs/heads/' + 'b' * 100_000)
     assert 0 < len(sb.git_info(t)[1]) <= 256, 'only the start of HEAD is read'
+
+# the repository's page on origin, credentials dropped; none for a remote on disk
+assert sb.web_link('git@github.com:o/r.git', 'main') == 'https://github.com/o/r/tree/main'
+assert sb.web_link('https://user:tok@gitlab.com/o/r.git', 'dev') == 'https://gitlab.com/o/r/tree/dev'
+assert sb.web_link('ssh://git@host.example:2222/o/r.git', '') == 'https://host.example/o/r'
+assert sb.web_link('/srv/git/r.git', 'main') is None
+# the branch ahead of origin's (⇡), behind (⇣) or apart (⇅), told by the reflogs: the branch that once stood where
+# the other stands now is the one that moved on
+A, B, C = 'a' * 40, 'b' * 40, 'c' * 40
+
+
+def repo_at(t, local, there, local_log, there_log, packed=False, origin='git@github.com:o/r.git'):
+    files = {'HEAD': 'ref: refs/heads/main\n', 'config': f'[core]\n\tbare = false\n[remote "origin"]\n\turl = {origin}\n',
+             'logs/refs/heads/main': ''.join(f'{"0" * 40} {s} u <u> 1 +0000\tx\n' for s in local_log),
+             'logs/refs/remotes/origin/main': ''.join(f'{"0" * 40} {s} u <u> 1 +0000\tx\n' for s in there_log)}
+    if packed:
+        files['packed-refs'] = f'# pack-refs with: peeled\n{local} refs/heads/main\n{there} refs/remotes/origin/main\n'
+    else:
+        files['refs/heads/main'], files['refs/remotes/origin/main'] = local + '\n', there + '\n'
+    for path, text in files.items():
+        os.makedirs(os.path.dirname(os.path.join(t, '.git', path)), exist_ok=True)
+        with open(os.path.join(t, '.git', path), 'w') as f:
+            f.write(text)
+    return sb.git_remote(t, 'main')
+
+
+for packed in (False, True):
+    for local, there, local_log, there_log, sync in ((B, A, [A, B], [A], '⇡'), (A, B, [A], [A, B], '⇣'),
+                                                       (B, C, [A, B], [A, C], '⇅'), (A, A, [A], [A], None)):
+        with tempfile.TemporaryDirectory() as t:
+            assert repo_at(t, local, there, local_log, there_log, packed) == ('https://github.com/o/r/tree/main', sync), sync
+with tempfile.TemporaryDirectory() as t:
+    assert repo_at(t, B, A, [A, B], [A], origin='/srv/git/r.git') == (None, '⇡'), 'a remote on disk has no page'
+    sub = os.path.join(t, 'src')
+    os.mkdir(sub)
+    line = sb.card({**FULL, 'workspace': {'current_dir': sub}}, 120, NOW, HOST, 10, (), {**sb.DEFAULT, 'rows': [['repo']]})[1]
+    assert ''.join(p[0] for p in line).startswith(f'│ ⎇ {os.path.basename(t)} main ⇡ '), line
 
 
 with tempfile.TemporaryDirectory() as t:
@@ -239,7 +285,8 @@ RICH = {**ALL_D, 'session_name': 'skin work', 'output_style': {'name': 'Explanat
         'cost': {**FULL['cost'], 'total_api_duration_ms': 3_600_000, 'total_lines_added': 120, 'total_lines_removed': 30},
         'workspace': {**FULL['workspace'], 'added_dirs': ['/a', '/b']}, 'worktree': {'name': 'feat', 'branch': 'feat'},
         'rate_limits': {**FULL['rate_limits'], 'spend_limit': {'used_percentage': 30, 'resets_at': NOW + 86_400, 'used_usd': 15, 'limit_usd': 50}},
-        'prompt_cache': {'warm': True, 'expires_at': NOW + 3000, 'hit_ratio': 0.92}}
+        'prompt_cache': {'warm': True, 'expires_at': NOW + 3000, 'hit_ratio': 0.92, 'last_miss_at': NOW - 60,
+                         'last_miss_cause': {'causes': ['tools_changed']}}}
 RHOST = {**HOST, 'load': (1.2, 8), 'battery': (81, True), 'thinking': True}
 RS = {**ALL_S, 'mode': 'auto', 'drafts': 3}
 for d in (RICH, {}):

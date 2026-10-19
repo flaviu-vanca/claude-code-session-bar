@@ -91,6 +91,15 @@ def use_palette(name):
 
 use_palette('default')
 CACHE_SOON = 120  # seconds of prompt cache left under which the card warns
+MISS_SHOWN = 300  # seconds a prompt cache miss stays on the card
+# why the prompt cache missed: Claude Code's causes (RLs in 2.1.303), in short words
+MISS_CAUSE = {'system_prompt_changed': 'system prompt', 'tools_changed': 'tools', 'model_changed': 'model',
+              'fast_mode_changed': 'fast mode', 'cache_scope_or_ttl_changed': 'cache TTL', 'betas_changed': 'betas',
+              'effort_changed': 'effort', 'thinking_mode_changed': 'thinking',
+              'thinking_display_changed': 'thinking shown', 'auto_mode_changed': 'auto mode',
+              'overage_changed': 'usage limit', 'extra_body_changed': 'request fields',
+              'defer_loading_changed': 'deferred tools', 'messages_rewritten': 'earlier messages',
+              'ttl_expired_5m': 'idle 5m', 'ttl_expired_1h': 'idle 1h', 'likely_server_side': 'server side'}
 VERSION = re.compile(r'^\d+(\.\d+)+$')
 DISKS = ['/tmp', '~/.cache']  # the tmpfs and the scratch disk
 FOOTER_PADDING = 2  # columns Claude Code's footer row keeps on each side of the status line (oQe); its notes wrap below
@@ -101,11 +110,12 @@ CONFIG = os.environ.get('SESSION_BAR_CONFIG') or os.path.join(os.path.dirname(os
 TEXT = ['model', 'effort', 'thinking', 'style', 'agent', 'name', 'version', 'cost', 'time', 'api', 'lines', 'clock',
         'repo', 'cwd', 'session', 'worktree', 'dirs', 'mem', 'disks', 'load', 'battery']
 METERS = ['ctx', '5h', 'week', 'spend', 'hits']
-CHIPS = ['cloud', 'rc', 'mode', 'no_transcript', 'update', 'cache', 'big', 'drafts', 'sandbox', 'working', 'pr', 'fast', 'vim']
+CHIPS = ['cloud', 'rc', 'mode', 'no_transcript', 'update', 'cache', 'miss', 'big', 'drafts', 'sandbox', 'working', 'pr',
+         'fast', 'vim']
 PLACES = {'top_left': TEXT, 'top_right': TEXT, 'rows': TEXT + METERS, 'edge': CHIPS}
 DEFAULT = {'top_left': ['model', 'effort'], 'top_right': ['cost', 'time'],
            'rows': [['ctx', '5h', 'week'], ['repo', 'cwd', 'session', 'mem', 'disks']],
-           'edge': ['cloud', 'rc', 'no_transcript', 'update', 'cache', 'sandbox', 'working', 'pr', 'fast', 'vim'],
+           'edge': ['cloud', 'rc', 'no_transcript', 'update', 'cache', 'miss', 'sandbox', 'working', 'pr', 'fast', 'vim'],
            'meter': 10, 'palette': 'default'}
 
 
@@ -248,23 +258,89 @@ def head_of(path, n=256):
         return f.read(n)
 
 
-def git_info(cwd):
-    """The repository's folder name and branch, read from .git without running git."""
+def tail_of(path, n=65536):
+    """The last `n` bytes of a regular file, as text; anything else reads as empty, as with head_of."""
+    if not stat.S_ISREG(os.stat(path).st_mode):
+        return ''
+    with open(path, 'rb') as f:
+        f.seek(max(0, os.fstat(f.fileno()).st_size - n))
+        return f.read().decode(errors='replace')
+
+
+def git_dir(cwd):
+    """The repository's top folder and its git folder, found up from `cwd`; (None, None) outside one."""
     d = cwd
     while d and d != '/':
         dot = os.path.join(d, '.git')
         if os.path.exists(dot):
             try:
-                gitdir = dot
-                if os.path.isfile(dot):  # a worktree or a submodule: "gitdir: <path>"
-                    line = head_of(dot).strip()
-                    gitdir = os.path.join(d, line[8:]) if line.startswith('gitdir: ') else dot
-                head = head_of(os.path.join(gitdir, 'HEAD')).strip()
+                line = head_of(dot).strip() if os.path.isfile(dot) else ''  # a worktree or a submodule: "gitdir: <path>"
             except OSError:
-                head = ''
-            return os.path.basename(d), head[16:] if head.startswith('ref: refs/heads/') else head[:7]
+                line = ''
+            return d, os.path.join(d, line[8:]) if line.startswith('gitdir: ') else dot
         d = os.path.dirname(d)
     return None, None
+
+
+def git_info(cwd):
+    """The repository's folder name and branch, read from .git without running git."""
+    top, gitdir = git_dir(cwd)
+    if not top:
+        return None, None
+    try:
+        head = head_of(os.path.join(gitdir, 'HEAD')).strip()
+    except OSError:
+        head = ''
+    return os.path.basename(top), head[16:] if head.startswith('ref: refs/heads/') else head[:7]
+
+
+def web_link(url, branch):
+    """A remote's address as an https page, of the branch if given; credentials dropped; None for a remote on disk."""
+    u = url[:-4] if url.endswith('.git') else url
+    if u.startswith('git@') and ':' in u:
+        host_, _, path = u[4:].partition(':')
+    elif u.startswith(('ssh://', 'https://', 'http://')):
+        host_, _, path = u.split('://', 1)[1].rpartition('@')[2].partition('/')
+        host_ = host_.split(':')[0]
+    else:
+        return None
+    return f'https://{host_}/{path}' + (f'/tree/{branch}' if branch else '') if host_ and path else None
+
+
+def git_remote(cwd, branch):
+    """The branch's page on origin, from .git/config, and whether the branch is ahead of origin's (⇡), behind (⇣) or
+    apart (⇅), told without running git: each branch's reflog keeps where it stood, and the branch that once stood
+    where the other stands now is the one that moved on."""
+    _, gitdir = git_dir(cwd)
+    shared = os.path.join(gitdir, 'commondir')  # a worktree keeps config, refs and logs in the main git folder
+    common = os.path.join(gitdir, head_of(shared).strip()) if os.path.isfile(shared) else gitdir
+    m = re.search(r'\[remote "origin"\][^\[]*?^\s*url\s*=\s*(\S+)', head_of(os.path.join(common, 'config'), 65536), re.M)
+    url = web_link(m.group(1), branch) if m else None
+    if not branch or '..' in branch or not re.fullmatch(r'[\w./-]+', branch):
+        return url, None
+
+    def sha(ref):
+        try:
+            return head_of(os.path.join(common, ref), 64).strip() or None
+        except OSError:
+            try:
+                packed = head_of(os.path.join(common, 'packed-refs'), 1 << 20)
+            except OSError:
+                return None
+            return next((line.split()[0] for line in packed.splitlines() if line.endswith(' ' + ref)), None)
+
+    def stood(ref):  # where a branch stood, from the end of its reflog
+        try:
+            log = tail_of(os.path.join(common, 'logs', ref)).splitlines()
+        except OSError:
+            return set()
+        return {line.split()[1] for line in log if len(line.split()) > 1}
+
+    local, there = sha(f'refs/heads/{branch}'), sha(f'refs/remotes/origin/{branch}')
+    if not local or not there or local == there:
+        return url, None
+    ahead, behind = there in stood(f'refs/heads/{branch}'), local in stood(f'refs/remotes/origin/{branch}')
+    return url, '⇡' if ahead and not behind else '⇣' if behind and not ahead else '⇅'
 
 
 def host(project):
@@ -368,9 +444,18 @@ def chip(name, d, s, now):
     if name == 'cache':
         pc = d.get('prompt_cache') or {}
         left = (pc.get('expires_at') or 0) - now
+        cold = pc.get('recache_tokens_if_cold')  # what the next request costs once the cache is gone
+        cost = [P(f' ({tokens(cold)})', dim=True)] if isinstance(cold, (int, float)) and cold > 0 else []
         if pc.get('warm') and pc.get('expires_at') and 0 < left <= CACHE_SOON:
-            return [P(f'◷ cache {int(left)}s' if left < 60 else f'◷ cache {int(left // 60)}m', ORANGE)]
-        return [P('◷ cache cold', YELLOW)] if pc and not pc.get('warm') and pc.get('caching_observed') else []
+            return [P(f'◷ cache {int(left)}s' if left < 60 else f'◷ cache {int(left // 60)}m', ORANGE)] + cost
+        return [P('◷ cache cold', YELLOW)] + cost if pc and not pc.get('warm') and pc.get('caching_observed') else []
+    if name == 'miss':  # the prompt cache missed lately, and why
+        pc = d.get('prompt_cache') or {}
+        at, causes = pc.get('last_miss_at'), (pc.get('last_miss_cause') or {}).get('causes') or []
+        if isinstance(at, (int, float)) and 0 <= now - at <= MISS_SHOWN:
+            why = MISS_CAUSE.get(causes[0], str(causes[0])) if causes else 'unknown'
+            return [P('✗ cache miss', RED), P(': ' + why + (f' +{len(causes) - 1}' if len(causes) > 1 else ''), dim=True)]
+        return []
     if name == 'big':  # past 200k tokens of context, where the long-context price applies
         return [P('▲ 200k+', ORANGE)] if d.get('exceeds_200k_tokens') else []
     if name == 'drafts':
@@ -439,8 +524,12 @@ def element(name, x):
         return [P(f'+{added}', GREEN), P(f' -{removed}', RED)] if added or removed else []
     if name == 'clock':
         return [P(time.strftime('%H:%M', time.localtime(x['now'])))]
-    if name == 'repo':
-        return [dim(f"⎇ {x['repo']}")] + ([dim(f" {x['branch']}")] if x['branch'] else []) if x['repo'] else []
+    if name == 'repo':  # linked to the branch on origin; ⇡ ⇣ ⇅ for ahead of it, behind it, apart from it
+        if not x['repo']:
+            return []
+        url, sync = x['remote'] or (None, None)
+        return ([P(f"⎇ {x['repo']}", dim=True, link=url)] + ([dim(f" {x['branch']}")] if x['branch'] else [])
+                + ([P(f' {sync}', YELLOW)] if sync else []))
     if name == 'cwd':
         return [dim(f"⌂ {tilde(x['cwd'], x['home'])}")]
     if name == 'session':
@@ -480,7 +569,8 @@ def card(d, width, now, h, meter=10, chips=(), cfg=None):
     texts = cfg['top_left'] + cfg['top_right'] + [n for r in cfg['rows'] for n in r]
     repo, branch = git_info(cwd) if 'repo' in texts else (None, None)
     x = {'d': d, 'h': h, 'now': now, 'model': model_name(m_.get('id'), m_.get('display_name')), 'cwd': cwd,
-         'home': os.path.expanduser('~'), 'repo': repo, 'branch': branch}
+         'home': os.path.expanduser('~'), 'repo': repo, 'branch': branch,
+         'remote': safe(git_remote, cwd, branch) if repo else None}
     pieces = lambda place: [g for g in (safe(element, n, x) for n in cfg[place]) if g]
 
     # the top edge: drops its right elements from the end, then its left ones but the first, then cuts that one

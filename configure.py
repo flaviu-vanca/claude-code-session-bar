@@ -28,11 +28,13 @@ MAX_BODY = 64 * 1024
 LOCK = threading.Lock()  # use_palette sets the card's colours for the whole module
 
 WHAT = {
-    'model': "the model's name", 'effort': 'the effort level', 'thinking': '"∴ thinking" while Claude works out its next step: thinks, then writes it',
+    'model': "the model's name", 'effort': 'the effort level',
+    'thinking': '"∴ thinking" while Claude works out its next step: thinks, then writes it',
     'style': 'the output style, when it is not the default', 'agent': 'the agent the session runs as (--agent)',
     'name': 'the session name set with /rename', 'version': "Claude Code's version", 'cost': "the session's cost",
     'time': "the session's wall time", 'api': 'the time spent waiting on the API', 'lines': 'lines added and removed',
-    'clock': 'the time of day', 'repo': 'the repository and branch', 'cwd': 'the current folder',
+    'clock': 'the time of day', 'cwd': 'the current folder',
+    'repo': 'the repository and branch, a link to the branch on origin; ⇡ ahead of origin, ⇣ behind, ⇅ apart',
     'session': 'the session id', 'worktree': 'the worktree the session runs in', 'dirs': 'folders added with /add-dir',
     'mem': 'memory in use', 'disks': 'how full /tmp and ~/.cache are', 'load': 'the 1-minute load, coloured by CPU count',
     'battery': 'the battery charge, + while charging',
@@ -42,7 +44,8 @@ WHAT = {
     'cloud': 'this CLI drives a cloud or remote session', 'rc': 'Remote Control is on, as a link',
     'mode': 'the permission mode (Claude Code shows it under the card too)',
     'no_transcript': 'started with transcript saving off', 'update': 'a newer Claude Code is downloaded: restart',
-    'cache': 'the prompt cache is about to expire, or is cold', 'big': 'the context is past 200k tokens',
+    'cache': 'the prompt cache is about to expire, or is cold; in brackets what the next request costs then',
+    'miss': 'the prompt cache missed in the last 5 minutes, and why', 'big': 'the context is past 200k tokens',
     'drafts': 'feedback drafts waiting (Claude Code shows them under the card too)', 'sandbox': 'the sandbox is on',
     'working': 'a turn is running', 'pr': "the branch's pull request and its review", 'fast': 'fast mode is on',
     'vim': 'the vim mode, when not NORMAL'}
@@ -59,7 +62,8 @@ SAMPLE = {'session_id': '804d5fae-3e29', 'session_name': 'skin work', 'version':
           'rate_limits': {'five_hour': {'used_percentage': 19, 'resets_at': NOW + 5640},
                           'seven_day': {'used_percentage': 68, 'resets_at': NOW + 439_000},
                           'spend_limit': {'used_percentage': 30, 'resets_at': NOW + 86_400, 'used_usd': 15, 'limit_usd': 50}},
-          'prompt_cache': {'warm': True, 'expires_at': NOW + 75, 'hit_ratio': 0.92},
+          'prompt_cache': {'warm': True, 'expires_at': NOW + 75, 'hit_ratio': 0.92, 'recache_tokens_if_cold': 383_000,
+                           'last_miss_at': NOW - 60, 'last_miss_cause': {'causes': ['ttl_expired_5m']}},
           'pr': {'number': 12, 'url': 'https://github.com/o/r/pull/12', 'review_state': 'approved'}}
 STATES = {'rc': 'session_01X', 'busy': True, 'newest': '2.1.303', 'no_transcript': True, 'sandbox': True,
           'mode': 'auto', 'drafts': 3}
@@ -91,6 +95,7 @@ def sample():
     for w in d['rate_limits'].values():
         w['resets_at'] += shift
     d['prompt_cache']['expires_at'] += shift
+    d['prompt_cache']['last_miss_at'] += shift
     return d
 
 

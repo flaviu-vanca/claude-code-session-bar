@@ -63,12 +63,22 @@ the card shows 1%. Spend is shown as it comes.
 
 | Place | Elements (the default ones in bold) |
 |---|---|
-| Top edge, left and right; any row | **model**, **effort**, thinking, style, agent, name (`/rename`), version, **cost**, **time**, api (API time), lines (+/-), clock, **repo**, **cwd**, **session**, worktree, dirs (`/add-dir`), **mem**, **disks**, load, battery |
+| Top edge, left and right; any row | **model**, **effort**, thinking, style, agent, name (`/rename`), version, **cost**, **time**, api (API time), lines (+/-), clock, **repo** (linked to origin; ⇡ ⇣ ⇅), **cwd**, **session**, worktree, dirs (`/add-dir`), **mem**, **disks**, load, battery |
 | Meters, on any row | **ctx**, **5h**, **week**, spend (gateway only), hits (prompt cache hit ratio, green is good; read as a fraction ≤ 1, unverified on a real payload) |
-| Bottom edge (chips) | **cloud**, **rc**, mode, **no_transcript**, **update**, **cache**, big (context past 200k), drafts, **sandbox**, **working**, **pr**, **fast**, **vim** |
+| Bottom edge (chips) | **cloud**, **rc**, mode, **no_transcript**, **update**, **cache** (and what a cold start costs), **miss** (a cache miss and why), big (context past 200k), drafts, **sandbox**, **working**, **pr**, **fast**, **vim** |
 
 By default the top left holds model and effort, the top right cost and time, row 1 ctx, 5h and week, and row 2
 repo, cwd, session, mem and disks. `repo` shows only inside a repository; `cwd` always shows.
+
+`repo` links its name to the branch's page on origin, the address from `.git/config` with any credentials dropped,
+and marks the branch ahead of origin's (`⇡`), behind (`⇣`) or apart (`⇅`). Without running git that comes from
+the reflogs (the last 64 KB of each): the branch that once stood where the other stands now is the one that moved
+on. A fetch moves origin's branch, so `⇣` shows what the last fetch brought.
+
+The cache chip adds, in brackets, the payload's `prompt_cache.recache_tokens_if_cold`: what the next request costs
+once the cache is gone (Claude Code's own estimate, 2.1.303). `miss` shows for 5 minutes after the cache missed
+(`last_miss_at`), with the first of `last_miss_cause.causes` in short words: Claude Code's causes and its own words
+for them are in `RLs` (system prompt, tools, model, effort, idle past the 5m or 1h TTL, server side, and others).
 
 `thinking` shows `∴ thinking` while Claude works out its next step: the session file says `busy` and the transcript's
 last message is the user's or a tool's result (`last_speaker`, from the last 256 KB). Claude Code writes a message
