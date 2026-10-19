@@ -26,7 +26,8 @@ Live use: `statusLine.command` in `~/.claude/settings.json` points at `session-b
 - `rows`: any number of rows, each holding meters and text;
 - `edge`: the chips;
 - `meter`: the bars in a meter, 3–30;
-- `palette`: default, nord, dracula, gruvbox, tokyo or mono.
+- `palette`: default, nord, dracula, gruvbox, tokyo, catppuccin, rose-pine, solarized, one-dark, everforest,
+  kanagawa, monokai, ayu, synthwave, or the monochrome mono, matrix and amber.
 
 `SESSION_BAR_CONFIG` overrides the path. Without the file the card uses `DEFAULT`. Unknown elements are skipped.
 The first settings' `meters` and `info` keys are read as two rows.

@@ -267,6 +267,13 @@ assert '$123.46' in narrow_top and clock not in narrow_top, narrow_top
 
 # colour palettes: every one has the same colours, an unknown name gets the default
 assert all(set(pal) == set(sb.PALETTES['default']) for pal in sb.PALETTES.values())
+# the looks, the monochrome ones last: every colour an (r, g, b), a meter's empty segments darker than the frame
+assert list(sb.PALETTES) == ['default', 'nord', 'dracula', 'gruvbox', 'tokyo', 'catppuccin', 'rose-pine', 'solarized',
+                             'one-dark', 'everforest', 'kanagawa', 'monokai', 'ayu', 'synthwave', 'mono', 'matrix', 'amber']
+luma = lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+for name, pal in sb.PALETTES.items():
+    assert all(len(c) == 3 and all(isinstance(v, int) and 0 <= v <= 255 for v in c) for c in pal.values()), name
+    assert luma(pal['empty']) < luma(pal['edge']), name
 sb.use_palette('dracula')
 dr = sb.PALETTES['dracula']
 assert sb.ACCENT == dr['accent'] and sb.heat(0) == dr['green'] and sb.MODES['auto'][2] == dr['yellow']

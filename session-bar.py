@@ -20,7 +20,8 @@ import time
 
 # The card's colours, one set per palette: accent is the model's name; edge the frame, visible on a dark terminal
 # and quieter than the text; empty a meter's unfilled segments; green to red the heat; purple, blue, teal the dark
-# theme's merged, ide and planMode. "default" is the card as it was first drawn.
+# theme's merged, ide and planMode. "default" is the card as it was first drawn. The themes keep their own colours,
+# the nearest one where a theme has none (rose-pine's green and orange); mono, matrix and amber are monochrome.
 PALETTES = {
     'default': {'accent': (217, 119, 87), 'edge': (92, 92, 92), 'empty': (74, 74, 85), 'green': (63, 185, 80),
                 'yellow': (227, 179, 65), 'orange': (240, 136, 62), 'red': (248, 81, 73), 'purple': (175, 135, 255),
@@ -37,9 +38,42 @@ PALETTES = {
     'tokyo': {'accent': (122, 162, 247), 'edge': (86, 95, 137), 'empty': (59, 66, 97), 'green': (158, 206, 106),
               'yellow': (224, 175, 104), 'orange': (255, 158, 100), 'red': (247, 118, 142), 'purple': (187, 154, 247),
               'blue': (125, 207, 255), 'teal': (115, 218, 202)},
+    'catppuccin': {'accent': (203, 166, 247), 'edge': (108, 112, 134), 'empty': (69, 71, 90), 'green': (166, 227, 161),
+                   'yellow': (249, 226, 175), 'orange': (250, 179, 135), 'red': (243, 139, 168),
+                   'purple': (245, 194, 231), 'blue': (137, 180, 250), 'teal': (148, 226, 213)},
+    'rose-pine': {'accent': (235, 188, 186), 'edge': (110, 106, 134), 'empty': (82, 79, 103), 'green': (156, 207, 216),
+                  'yellow': (246, 193, 119), 'orange': (235, 188, 186), 'red': (235, 111, 146), 'purple': (196, 167, 231),
+                  'blue': (62, 143, 176), 'teal': (156, 207, 216)},
+    'solarized': {'accent': (38, 139, 210), 'edge': (88, 110, 117), 'empty': (52, 76, 84), 'green': (133, 153, 0),
+                  'yellow': (181, 137, 0), 'orange': (203, 75, 22), 'red': (220, 50, 47), 'purple': (108, 113, 196),
+                  'blue': (38, 139, 210), 'teal': (42, 161, 152)},
+    'one-dark': {'accent': (97, 175, 239), 'edge': (92, 99, 112), 'empty': (62, 68, 81), 'green': (152, 195, 121),
+                 'yellow': (229, 192, 123), 'orange': (209, 154, 102), 'red': (224, 108, 117), 'purple': (198, 120, 221),
+                 'blue': (97, 175, 239), 'teal': (86, 182, 194)},
+    'everforest': {'accent': (167, 192, 128), 'edge': (122, 132, 120), 'empty': (79, 88, 94), 'green': (167, 192, 128),
+                   'yellow': (219, 188, 127), 'orange': (230, 152, 117), 'red': (230, 126, 128),
+                   'purple': (214, 153, 182), 'blue': (127, 187, 179), 'teal': (131, 192, 146)},
+    'kanagawa': {'accent': (255, 160, 102), 'edge': (114, 113, 105), 'empty': (84, 84, 109), 'green': (152, 187, 108),
+                 'yellow': (230, 195, 132), 'orange': (255, 160, 102), 'red': (228, 104, 118), 'purple': (149, 127, 184),
+                 'blue': (126, 156, 216), 'teal': (122, 168, 159)},
+    'monokai': {'accent': (249, 38, 114), 'edge': (117, 113, 94), 'empty': (73, 72, 62), 'green': (166, 226, 46),
+                'yellow': (230, 219, 116), 'orange': (253, 151, 31), 'red': (249, 38, 114), 'purple': (174, 129, 255),
+                'blue': (102, 217, 239), 'teal': (102, 217, 239)},
+    'ayu': {'accent': (230, 180, 80), 'edge': (108, 115, 128), 'empty': (61, 66, 77), 'green': (170, 217, 76),
+            'yellow': (255, 180, 84), 'orange': (255, 143, 64), 'red': (240, 113, 120), 'purple': (210, 166, 255),
+            'blue': (57, 186, 230), 'teal': (149, 230, 203)},
+    'synthwave': {'accent': (255, 126, 219), 'edge': (132, 139, 189), 'empty': (64, 52, 96), 'green': (114, 241, 184),
+                  'yellow': (254, 222, 93), 'orange': (255, 139, 57), 'red': (254, 68, 80), 'purple': (185, 135, 255),
+                  'blue': (54, 249, 246), 'teal': (54, 249, 246)},
     'mono': {'accent': (238, 238, 238), 'edge': (92, 92, 92), 'empty': (58, 58, 58), 'green': (140, 140, 140),
              'yellow': (180, 180, 180), 'orange': (215, 215, 215), 'red': (255, 255, 255), 'purple': (200, 200, 200),
-             'blue': (170, 170, 170), 'teal': (150, 150, 150)}}
+             'blue': (170, 170, 170), 'teal': (150, 150, 150)},
+    'matrix': {'accent': (80, 255, 120), 'edge': (30, 110, 55), 'empty': (22, 62, 34), 'green': (0, 170, 60),
+               'yellow': (60, 210, 90), 'orange': (130, 240, 150), 'red': (210, 255, 215), 'purple': (140, 230, 160),
+               'blue': (70, 190, 110), 'teal': (50, 160, 95)},
+    'amber': {'accent': (255, 196, 40), 'edge': (130, 85, 20), 'empty': (70, 48, 14), 'green': (180, 110, 10),
+              'yellow': (230, 150, 20), 'orange': (255, 190, 60), 'red': (255, 235, 170), 'purple': (240, 170, 60),
+              'blue': (210, 140, 40), 'teal': (200, 130, 30)}}
 
 
 def use_palette(name):
