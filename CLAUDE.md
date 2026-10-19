@@ -1,7 +1,7 @@
 # Claude Skin
 
 Customizing how Claude Code looks, through the Session Bar status line card (`session-bar.py`) only. Read NOTES.md
-first: it holds the state, the open decision and what Claude Code's code allows.
+first: it holds the state, the decisions and what Claude Code's code allows.
 
 - **Language:** reply in Romanian; code, comments and commits are in English.
 - **No change before approval:** show a preview first, using `preview/` or a new throwaway script, and wait for the

@@ -12,8 +12,7 @@ is Python 3 stdlib only, runs with `python3 -I -S`, and one run takes about 20 m
 | What | Command |
 |---|---|
 | The card, on a payload | `python3 -I -S session-bar.py [--meter N] < payload.json` |
-| The settings, with the card drawn live | `python3 configure.py`, in a terminal of its own (`!` is not interactive) |
-| The settings in the browser, drag and drop | `python3 configure-web.py [port]`, in a terminal of its own: it serves the page on 127.0.0.1, opens it, and stops a few seconds after the page closes |
+| The settings in the browser, drag and drop | `python3 configure.py [port]`, in a terminal of its own: it serves the page on 127.0.0.1, opens it, and stops a few seconds after the page closes |
 | Tests (prints `ok`) | `python3 -I test_session_bar.py` |
 | Preview of the chips with sample states | `python3 -I preview/chips.py` |
 
@@ -35,12 +34,15 @@ The first settings' `meters` and `info` keys are read as two rows.
 When a row is too long, its meters shrink to half their length, then it wraps onto more lines; a dim `·` sits
 between elements. The edges still drop elements from the end of their lists.
 
-`configure.py` edits the file:
-- left and right pick a place, up and down an element;
-- space turns it on or off, `[` `]` reorder;
-- `a` adds a row, `x` deletes the row under the cursor;
-- `+` `-` set the bars, `p` cycles the palettes;
-- `s` saves (written whole, through a temporary file), `q` quits.
+`configure.py` edits the file through a page in the browser, `configure-web.html`, whose card and tiles are drawn by
+the card itself:
+- drag elements between the places, or click a place and then an element; `×` or `Del` removes one;
+- `Alt` `←` `→` move an element within its place; rows are added, moved and deleted on the page;
+- the palettes and the bars have their own controls; sliders move the sample session's ctx, 5h and week;
+- `Ctrl` `S` saves (written whole, through a temporary file), `Ctrl` `Z` undoes.
+
+The server answers only this machine's page (Host and Origin) and runs every setting through `load_config` before it
+renders or saves. On 2026-10-19 it replaced the terminal configurator, which is in git at `899d14d` (MIX-12).
 
 The card picks up a save on its next run. `statusLine.refreshInterval` is 1 s since 2026-10-18, so the card also
 follows a window resize within a second: Claude Code reruns the command on its triggers and that timer, never on a
@@ -62,23 +64,25 @@ the card shows 1%. Spend is shown as it comes.
 By default the top left holds model and effort, the top right cost and time, row 1 ctx, 5h and week, and row 2
 repo, cwd, session, mem and disks. `repo` shows only inside a repository; `cwd` always shows.
 
-## Open decision (2026-10-18)
+## Chips that Claude Code also shows
 
 The user asked what a chip is worth when the native one under the card cannot be hidden. I proposed keeping on the
-card only what is not already on screen. On 2026-10-18 the user had the mode chip and the drafts chip removed; the
-other rows are still unanswered.
+card only what is not already on screen. On 2026-10-18 the user had the mode chip and the drafts chip removed. On
+2026-10-19 (MIX-12) the rest went to the settings page: the user keeps or drops each chip there, and nothing more is
+built for it.
 
-| Chip | Native under the card | Proposal |
+| Chip | Native under the card | Decision |
 |---|---|---|
 | mode | yes, and cannot be hidden | removed from the card on 2026-10-18 |
-| `⇄ rc`, `◎ cloud`, `↯ fast`, `⚠ no transcript`, `● working` | yes, and cannot be hidden | remove from the card |
+| `⇄ rc` | yes, from 60 columns up, and cannot be hidden | kept at the user's word on 2026-10-19; the card leaves room so the native pill sits beside it (see Drawing) |
+| `◎ cloud`, `↯ fast`, `⚠ no transcript`, `● working` | yes, and cannot be hidden | the user's call in the settings page; my proposal stays: drop them |
 | `✎ drafts` | `N feedback drafts` | removed from the card on 2026-10-18. The native one hides only with `feedbackDrafts: "off"`, which stops Claude drafting feedback |
 | `PR #N`, `-- INSERT --` | yes, hideable | real move: `prStatusFooterEnabled: false` (~/.claude.json) and `statusLine.hideVimModeIndicator: true` |
 | `↑ update`, `◷ cache`, `⧈ sandbox` | absent, or only for a few seconds | keep |
 
-Also deferred: a way to add elements at will, each with its own preview. The language question is open: Python
-starts in 6.4 ms against Node's 26.5 ms (15-run medians, Node v24). TS would buy a typed payload, a web preview and
-npm.
+Done on 2026-10-19: adding elements at will, each with its own preview, is the settings page. Closed the same day: the
+language question. TS would have bought a typed payload, a web preview and npm; the web preview now exists in
+Python, and Python starts in 6.4 ms against Node's 26.5 ms (15-run medians, Node v24).
 
 ## Facts from Claude Code 2.1.302's code
 

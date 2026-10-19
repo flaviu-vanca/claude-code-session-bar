@@ -275,56 +275,6 @@ sb.use_palette('nope')
 assert sb.ACCENT == sb.PALETTES['default']['accent'] and sb.heat(1) == sb.PALETTES['default']['red']
 
 
-# the configurator: each place lists its elements on first (in order), then the rest; keys toggle, move and save
-cspec = importlib.util.spec_from_file_location('configure', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'configure.py'))
-cf = importlib.util.module_from_spec(cspec)
-cspec.loader.exec_module(cf)
-assert set(cf.WHAT) == set(sb.TEXT + sb.METERS + sb.CHIPS), 'every element says what it shows'
-st = cf.State({**sb.DEFAULT, 'rows': [['ctx'], ['mem', 'repo']]})
-assert cf.places(st.cfg) == [('top_left', None), ('top_right', None), ('rows', 0), ('rows', 1), ('edge', None)]
-assert cf.items(st.cfg, ('rows', 1))[:3] == [('mem', True), ('repo', True), ('model', False)], cf.items(st.cfg, ('rows', 1))
-assert ('ctx', False) in cf.items(st.cfg, ('rows', 1)), 'a row takes meters and text'
-assert [n for n, _ in cf.items(st.cfg, ('edge', None))] == sb.DEFAULT['edge'] + ['mode', 'big', 'drafts'], 'the off ones follow'
-for k in ('right', 'right', 'right'):
-    st = cf.step(st, k)
-assert cf.places(st.cfg)[st.place] == ('rows', 1) and st.row == 0
-st = cf.step(cf.step(st, 'down'), '[')  # 'repo' up, before 'mem'
-assert st.cfg['rows'][1] == ['repo', 'mem'] and st.row == 0, (st.cfg['rows'], st.row)
-st = cf.step(st, ' ')  # 'repo' off: it joins the off ones and the cursor stays on the row
-assert st.cfg['rows'][1] == ['mem'] and st.row == 0, st.cfg['rows']
-st = cf.step(cf.step(st, 'down'), 'down')
-name = cf.items(st.cfg, ('rows', 1))[st.row][0]
-st = cf.step(st, ' ')
-assert st.cfg['rows'][1][-1] == name, (name, st.cfg['rows'])
-st = cf.step(st, 'a')  # a new, empty row after the last, under the cursor
-assert st.cfg['rows'] == [['ctx'], ['mem', name], []] and cf.places(st.cfg)[st.place] == ('rows', 2), st.cfg['rows']
-st = cf.step(st, 'x')  # the row under the cursor goes, the cursor to the one before
-assert st.cfg['rows'] == [['ctx'], ['mem', name]] and cf.places(st.cfg)[st.place] == ('rows', 1), st.cfg['rows']
-assert cf.step(cf.State(sb.DEFAULT), 'x').cfg == sb.DEFAULT, 'x deletes rows only'
-pals = list(sb.PALETTES)
-st = cf.State(sb.DEFAULT)
-for k in range(len(pals)):
-    assert st.cfg['palette'] == pals[k]
-    st = cf.step(st, 'p')
-assert st.cfg['palette'] == pals[0], 'p cycles the palettes'
-st = cf.step(cf.step(cf.State({**sb.DEFAULT, 'meter': 30}), '+'), '+')
-assert st.cfg['meter'] == 30 and cf.step(cf.State({**sb.DEFAULT, 'meter': 3}), '-').cfg['meter'] == 3
-for k in ('up', 'left'):
-    assert cf.step(cf.State(sb.DEFAULT), k).row == 0 and cf.step(cf.State(sb.DEFAULT), k).place == 0, 'the cursor stops at the edges'
-fresh = cf.State(sb.DEFAULT).cfg
-assert fresh is not sb.DEFAULT and fresh['rows'] is not sb.DEFAULT['rows'] and fresh['rows'][0] is not sb.DEFAULT['rows'][0], 'never edits DEFAULT'
-# the screen: no line wider than the terminal, the live card inside it
-for w in range(60, 201, 7):
-    screen = cf.render(cf.State(sb.DEFAULT), w, 50, NOW, HOST)
-    assert all(len(ANSI.sub('', line)) <= w for line in screen), (w, [len(ANSI.sub('', line)) for line in screen])
-    assert any('✻ Opus 5.5' in ANSI.sub('', line) for line in screen)
-with tempfile.TemporaryDirectory() as t:
-    path = os.path.join(t, 'session-bar.json')
-    cfg = {**sb.DEFAULT, 'rows': [['load', 'battery'], ['ctx']], 'meter': 7, 'palette': 'gruvbox'}
-    cf.save(cfg, path)
-    assert sb.load_config(path) == cfg and os.listdir(t) == ['session-bar.json'], os.listdir(t)
-
-
 # a payload of unexpected shape loses its chips, never the card
 import subprocess
 import sys
@@ -363,16 +313,22 @@ assert sb.env_flag(b'A=1\0' + F.encode() + b'=1\0', F) is True and sb.env_flag(F
 assert sb.env_flag(F.encode() + b'=0\0', F) is False and sb.env_flag(b'', F) is False
 assert sb.env_flag(b'X_' + F.encode() + b'=1\0', F) is False
 
-# the settings page (configure-web.py): its cleaning, its sample, the card it draws, the previews, guards, lifetime
-wspec = importlib.util.spec_from_file_location('web', os.path.join(os.path.dirname(spec.origin), 'configure-web.py'))
+# the settings page (configure.py): its cleaning, its sample, the card it draws, the previews, guards, lifetime
+wspec = importlib.util.spec_from_file_location('web', os.path.join(os.path.dirname(spec.origin), 'configure.py'))
 web = importlib.util.module_from_spec(wspec)
 wspec.loader.exec_module(web)
+assert set(web.WHAT) == set(sb.TEXT + sb.METERS + sb.CHIPS), 'every element says what it shows'
+with tempfile.TemporaryDirectory() as t:  # saved whole, through a temporary file that does not stay behind
+    path = os.path.join(t, 'session-bar.json')
+    cfg = {**sb.DEFAULT, 'rows': [['load', 'battery'], ['ctx']], 'meter': 7, 'palette': 'gruvbox'}
+    web.save(cfg, path)
+    assert sb.load_config(path) == cfg and os.listdir(t) == ['session-bar.json'], os.listdir(t)
 c = web.clean({'rows': [['ctx', 'bogus', 'rc'], ['repo']], 'edge': ['rc', 'ctx'], 'palette': 'nord', 'meter': 99})
 assert c['rows'] == [['ctx'], ['repo']] and c['edge'] == ['rc'] and c['palette'] == 'nord' and c['meter'] == 30, c
 d = web.sample({'ctx': 150, '5h': 42.5, 'week': 'x'})
 assert d['context_window']['used_percentage'] == 100 and d['rate_limits']['five_hour']['used_percentage'] == 42.5, d
-assert d['rate_limits']['seven_day']['used_percentage'] == web.cf.SAMPLE['rate_limits']['seven_day']['used_percentage']
-assert web.cf.SAMPLE['context_window']['used_percentage'] != 100  # the sample itself is left as it was
+assert d['rate_limits']['seven_day']['used_percentage'] == web.SAMPLE['rate_limits']['seven_day']['used_percentage']
+assert web.SAMPLE['context_window']['used_percentage'] != 100  # the sample itself is left as it was
 for cols, rc in ((188, True), (188, False), (59, True), (40, False)):
     r = web.render(c, cols, rc, d)
     assert r['width'] == sb.card_width(cols, rc) and all(sum(len(p[0]) for p in l) == r['width'] for l in r['lines']), (cols, rc)
