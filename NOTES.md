@@ -1,8 +1,10 @@
-# Claude Skin: notes
+# Claude Code Session Bar: notes
 
 This project customizes how Claude Code looks. It started inside the codewiki sessions on 2026-10-18 and moved here
 the same day as `~/session-bar`, then was renamed `~/claude-skin`. On 2026-10-19 the user narrowed it to the Session
-Bar alone: the agents window's theme, its notes and the idea of a live agents dashboard were removed.
+Bar alone: the agents window's theme, its notes and the idea of a live agents dashboard were removed. On 2026-10-20 it
+was renamed `claude-code-session-bar` and published at https://github.com/flaviu-vanca/claude-code-session-bar,
+installed with `install.py`; CI runs it on Linux, macOS and Windows.
 
 The Session Bar is a rounded card with segmented heat-coloured meters and the footer's states on its bottom edge. It
 is Python 3 stdlib only, runs with `python3 -I -S`, and one run takes about 20 ms.

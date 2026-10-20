@@ -1,4 +1,4 @@
-# Claude Skin
+# Claude Code Session Bar
 
 Customizing how Claude Code looks, through the Session Bar status line card (`session-bar.py`) only. Read NOTES.md
 first: it holds the state, the decisions and what Claude Code's code allows.

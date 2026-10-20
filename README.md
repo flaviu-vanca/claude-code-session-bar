@@ -1,22 +1,25 @@
-# Session Bar
+# Claude Code Session Bar
 
-A status line card for Claude Code: the model, the cost and time, segmented meters for the context and the usage
+A status line for Claude Code, drawn as a card: the model, the cost and time, segmented meters for the context and the usage
 limits, the workspace and the machine, and the footer's states on its bottom edge. One Python script, standard
 library only, about 20 ms a run, no network. Nothing it shows reaches the model, so it costs no tokens.
 
 ```
 ╭─ ✻ Opus 5.5 · xhigh ────────────────────────────────────────────────── $73.50 · ◷ 6h42m ─╮
 │ ctx ▰▰▰▰▱▱▱▱▱▱ 38% 383k/1M · 5h ▰▰▱▱▱▱▱▱▱▱ 20% ↻1h33m · week ▰▰▰▰▰▰▰▱▱▱ 69% ↻4d12h       │
-│ ⎇ claude-skin main · ⌂ ~/claude-skin · # 804d5fae · mem 5.1/14.9G · /tmp 51%             │
+│ ⎇ my-app main · ⌂ ~/work/my-app · # 804d5fae · mem 5.1/14.9G · /tmp 51% · ~/.cache 74%   │
 ╰─ ↑ 2.1.304 restart · PR #12 ✓ · ↯ fast · -- INSERT -- ───────────────────────────────────╯
 ```
 
 ## Install
 
 You need Python 3.8 or newer: on Windows from python.org, on macOS `python3` from Xcode's command line tools or
-Homebrew, on Linux from your distribution. Clone this repository or download it as a zip, then, from its folder:
+Homebrew, on Linux from your distribution. Get the code, then run the installer from its folder (on Windows, `py`
+in place of `python3`):
 
 ```sh
+git clone https://github.com/flaviu-vanca/claude-code-session-bar
+cd claude-code-session-bar
 python3 install.py                     # for you, in every project
 python3 install.py --scope project     # for the project in this folder
 ```

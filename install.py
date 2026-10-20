@@ -22,7 +22,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CODE = ['session-bar.py', 'configure.py', 'configure-web.html']
-MARKER = 'session-bar launcher (claude-skin install.py)'  # uninstall removes only launchers that carry it
+MARKER = 'session-bar launcher (claude-code-session-bar install.py)'  # uninstall removes only launchers that carry it
 
 # what the card reads from its environment; anything else Claude Code holds, keys among it, stays out
 CARD_ENV = ['HOME', 'USERPROFILE', 'SYSTEMROOT', 'COLUMNS', 'CLAUDE_CONFIG_DIR', 'XDG_DATA_HOME',
