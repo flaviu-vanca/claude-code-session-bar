@@ -875,7 +875,9 @@ with tempfile.TemporaryDirectory() as t:
         run = subprocess.run(['sh', '-c', inst.card_command(sys.executable, stub, project)], capture_output=True, env=outer)
         seen = json.loads(run.stdout)
         assert 'FAKE_SECRET' not in seen and 'ANTHROPIC_API_KEY' not in seen and seen['COLUMNS'] == '90', seen
-        assert set(seen) - {'LC_CTYPE', 'SESSION_BAR_CONFIG'} <= set(inst.CARD_ENV), set(seen)  # PEP 538 may add LC_CTYPE
+        # what the process sets for itself: Python's LC_CTYPE (PEP 538), macOS's __CF_USER_TEXT_ENCODING (the user's text
+        # encoding, no key); everything else is CARD_ENV
+        assert set(seen) - {'LC_CTYPE', '__CF_USER_TEXT_ENCODING', 'SESSION_BAR_CONFIG'} <= set(inst.CARD_ENV), set(seen)
         assert seen.get('SESSION_BAR_CONFIG') == ('/p/.claude/session-bar.json' if project else None), seen
 assert "'C:/Py/python.exe'" in inst.card_command('C:\\Py\\python.exe', 'C:\\x\\s.py', windows=True)
 # backslashes become / only for Windows (Git Bash drops them); on POSIX a backslash is a character of the name
