@@ -604,34 +604,41 @@ assert not life.over(1549) and life.over(1551)  # silence: 2.5 minutes, past a b
 life.bye(1560)
 assert not life.over(1563) and life.over(1565)  # the page said goodbye: a few seconds, in case it was a reload
 
+import socket
 import threading
 import urllib.error
 import urllib.request
 
+def opened(base, token):
+    """The page's first act: its address's one-time token, from #t=, swapped for the session it sends as X-Session."""
+    r = urllib.request.urlopen(urllib.request.Request(base + '/api/open', data=json.dumps({'t': token}).encode(),
+                                                      headers={'Content-Type': 'application/json'}), timeout=5)
+    return {'X-Session': json.load(r)['session']}
+
+
 with tempfile.TemporaryDirectory() as t:
     web.SAVE = os.path.join(t, 'session-bar.json')
-    srv = web.make_server(0, web.Life(time.time()))
+    life = web.Life(time.time())
+    srv = web.make_server(0, life)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base, token = f'http://127.0.0.1:{srv.server_address[1]}', web.Handler.token
 
-    def refused(req):
+    def refused(req, code=403):
         try:
             urllib.request.urlopen(req, timeout=5)
             raise AssertionError(f'answered: {req}')
         except urllib.error.HTTPError as e:
-            assert e.code == 403, e.code
+            assert e.code == code, e.code
 
-    # the address's token opens the page once and is swapped for a session cookie; a token read from the browser's
-    # command line (ps shows it to every user of the machine) is worth nothing after that, and nothing else opens it
-    for req in (base + '/', base + '/?t=wrong', base + '/api/state', base + f'/api/state?t={token}'):
-        refused(req)
-    first = urllib.request.urlopen(f'{base}/?t={token}', timeout=5)
-    cookie = first.headers['Set-Cookie']
-    assert first.status == 200 and 'HttpOnly' in cookie and 'SameSite=Strict' in cookie and len(token) >= 20, cookie
-    C = {'Cookie': cookie.split(';')[0]}
-    refused(f'{base}/?t={token}')  # used once
-    assert urllib.request.urlopen(urllib.request.Request(base + '/', headers=C), timeout=5).status == 200  # a reload
+    # the page holds no secret and loads for anyone on this machine; its API answers only with the session that the
+    # address's one-time token buys. The token never rides a command line (ps shows those to every user), and a
+    # session in a header, unlike a cookie, never reaches another port of 127.0.0.1
+    assert urllib.request.urlopen(base + '/', timeout=5).status == 200 and len(token) >= 20
+    refused(base + '/api/state')
+    refused(urllib.request.Request(base + '/api/state', headers={'X-Session': 'wrong'}))
+    refused(urllib.request.Request(base + '/api/open', data=b'{"t": "wrong"}', headers={'Content-Type': 'application/json'}))
     refused(urllib.request.Request(base + '/api/save', data=b'{}', headers={'Content-Type': 'application/json'}))
+    C = opened(base, token)
     post = lambda path, body, **h: urllib.request.urlopen(urllib.request.Request(
         base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **C, **h}), timeout=5)
     st = json.load(urllib.request.urlopen(urllib.request.Request(base + '/api/state', headers=C), timeout=5))
@@ -650,6 +657,23 @@ with tempfile.TemporaryDirectory() as t:
         assert e.code == 403 and not os.path.exists(web.SAVE), e.code
     json.load(post('/api/save', {'cfg': c}))
     assert sb.load_config(web.SAVE) == c
+    # on Linux the token is taken only from a connection of this user's (/proc/net/tcp says whose a socket is): one
+    # who read it in ps under another account gets nothing
+    if sys.platform.startswith('linux'):
+        with socket.create_connection(('127.0.0.1', srv.server_address[1])) as probe:
+            assert web.peer_uid(probe.getsockname()[1], srv.server_address[1]) == os.getuid()
+        saved, web.peer_uid = web.peer_uid, lambda *a: os.getuid() + 1
+        try:  # the spent token, replayed by another user, cannot even end the server
+            refused(urllib.request.Request(base + '/api/open', data=json.dumps({'t': token}).encode(),
+                                           headers={'Content-Type': 'application/json'}))
+        finally:
+            web.peer_uid = saved
+    # the token buys one session; spent again, it means someone else opened the page first: the server ends, and
+    # whatever session they got ends with it
+    assert not life.over(time.time())
+    refused(urllib.request.Request(base + '/api/open', data=json.dumps({'t': token}).encode(),
+                                   headers={'Content-Type': 'application/json'}), 409)
+    assert life.over(time.time())
     srv.shutdown()
     srv.server_close()
 
@@ -670,11 +694,16 @@ with tempfile.TemporaryDirectory() as t:
         conn.close()
         return r.status
 
-    opened = urllib.request.urlopen(f'http://127.0.0.1:{srv.server_address[1]}/?t={web.Handler.token}', timeout=5)
-    J = {'Content-Type': 'application/json', 'Cookie': opened.headers['Set-Cookie'].split(';')[0]}
+    if sys.platform.startswith('linux'):  # a fresh token, offered by another user: refused, and still good for ours
+        saved, web.peer_uid = web.peer_uid, lambda *a: os.getuid() + 1
+        try:
+            assert status('POST', '/api/open', json.dumps({'t': web.Handler.token}).encode(), **{'Content-Type': 'application/json'}) == 403
+        finally:
+            web.peer_uid = saved
+    J = {'Content-Type': 'application/json', **opened(f'http://127.0.0.1:{srv.server_address[1]}', web.Handler.token)}
     assert status('POST', '/api/save', b'{}', **J, **{'Content-Length': str(web.MAX_BODY + 1)}) == 400
     assert status('POST', '/api/save', b'{oops', **J) == 400 and status('POST', '/api/save', b'{}', **{**J, 'Content-Type': 'text/plain'}) == 400
-    assert {status('GET', p, Cookie=J['Cookie']) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
+    assert {status('GET', p, **{'X-Session': J['X-Session']}) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
     assert not os.path.exists(web.SAVE)
     # checked again at save time: a folder swapped for a symlink after the page opened is not written into
     os.makedirs(os.path.join(t, 'elsewhere'))
@@ -747,9 +776,9 @@ with tempfile.TemporaryDirectory() as t:
     assert run.returncode == 0 and time.time() - began < 5 and run.stdout.count('\n') == 1 and 'http://127.0.0.1:' in run.stdout, run
     url = run.stdout.strip().rsplit(' ', 1)[1]
 
-    def session(url):  # open the page's address once, as the browser would, and keep its cookie
-        r = urllib.request.urlopen(url, timeout=5)
-        return url.split('/?t=')[0], {'Cookie': r.headers['Set-Cookie'].split(';')[0]}
+    def session(url):  # what the page does with its address: spend the token in #t= for a session
+        root, token = url.split('/#t=')
+        return root, opened(root, token)
 
     root, C = session(url)
     st = json.load(urllib.request.urlopen(urllib.request.Request(f'{root}/api/state', headers=C), timeout=5))
@@ -769,14 +798,14 @@ with tempfile.TemporaryDirectory() as t:
             s.bind(('127.0.0.1', 0))
             return s.getsockname()[1]
 
-    opened = os.path.join(t, 'opened.txt')
+    seen = os.path.join(t, 'opened.txt')
     run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', str(free_port())], cwd=proj, capture_output=True, text=True,
-                         env={**bare, 'HOME': home, 'BROWSER': browser('record', f'echo "$1" > {opened}'), 'PATH': '/usr/bin:/bin'}, timeout=15)
+                         env={**bare, 'HOME': home, 'BROWSER': browser('record', f'echo "$1" > {seen}'), 'PATH': '/usr/bin:/bin'}, timeout=15)
     assert run.returncode == 0 and run.stdout == '', run
-    with open(opened) as f:
-        url = f.read().strip()
-    assert '/?t=' in url, url  # the browser gets the address with its token
-    root, C = session(url)
+    with open(seen) as f:
+        given = f.read().strip()
+    assert '/#t=' in given and '?' not in given, given  # in the fragment: never in a request line, a log or a Referer
+    root, C = session(given)
     urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
     # the server answers while a browser that blocks (a console one) still runs
     port = free_port()

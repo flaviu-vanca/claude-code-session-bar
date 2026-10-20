@@ -3,13 +3,12 @@
 watch the card change, drawn by session-bar.py itself on a sample session.
 
 Run it in a terminal of its own:
-  python3 ~/claude-skin/configure.py [port]
+  session-bar [port]    (installed by install.py), or python3 configure.py [port] from this folder
 It serves configure-web.html on 127.0.0.1, opens it in the browser, and stops a few seconds after the page is closed
 (Ctrl+C stops it at once). Save writes session-bar.json, which the card reads on its next run. Stdlib only, like the
 card; nothing here reaches the model.
 """
 import hmac
-import http.cookies
 import importlib.util
 import json
 import os
@@ -21,7 +20,6 @@ import sys
 import tempfile
 import threading
 import time
-import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -230,12 +228,33 @@ class Life:
     def over(self, now):
         return now - self.last > (self.quiet if self.seen else self.first)
 
+    def end(self):
+        self.last, self.seen = float('-inf'), True
+
+
+def peer_uid(client_port, server_port):
+    """The user owning the client end of a loopback connection, from /proc/net/tcp (Linux), or None."""
+    want = f':{client_port:04X}', f':{server_port:04X}'
+    try:
+        with open('/proc/net/tcp') as f:
+            for line in f.readlines()[1:]:
+                parts = line.split()
+                if parts[1].endswith(want[0]) and parts[2].endswith(want[1]):
+                    return int(parts[7])
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+OPENING = threading.Lock()  # the token is checked and spent in one step: two requests cannot both spend it
+
 
 class Handler(BaseHTTPRequestHandler):
-    # token: the address's, good for one opening of the page; session: the cookie that opening sets, which every
-    # later request carries. Another user of the machine can reach 127.0.0.1 and can read the browser's command line
-    # (ps), so the token is spent by the time they could use it, and the cookie never leaves the browser (HttpOnly).
-    hosts, life, token, session, cookie = set(), None, '', '', ''
+    # token: in the address's fragment (#t=), which the page spends once on /api/open for the session it then sends
+    # as X-Session. Another user of the machine can reach 127.0.0.1 and read the browser's command line (ps): on
+    # Linux the token is taken only from this user's connections, and a second use anywhere ends the server. A
+    # header, unlike a cookie, never goes to another port of 127.0.0.1.
+    hosts, life, token, session, spent = set(), None, '', '', ''
 
     def send(self, code, body, kind='application/json', headers=()):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -248,38 +267,38 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def ok(self):
-        """This machine's page (Host, Origin) carrying the session cookie. Sets self.route, the path without its
-        query."""
+    def here(self):
+        """This machine's page: the Host (against DNS rebinding) and, on a POST, the Origin. Sets self.route."""
         self.route = self.path.partition('?')[0]
-        jar = http.cookies.SimpleCookie()
-        try:
-            jar.load(self.headers.get('Cookie', ''))
-        except http.cookies.CookieError:
-            pass
-        held = jar[self.cookie].value if self.cookie in jar else ''
-        return (trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)
-                and bool(held) and hmac.compare_digest(held.encode(), self.session.encode()))
+        return trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)
 
-    def opening(self):
-        """The first opening of the page, with the address's token, which it spends."""
-        given = urllib.parse.parse_qs(self.path.partition('?')[2]).get('t', [''])[0]
-        if (self.route == '/' and Handler.token and hmac.compare_digest(given.encode(), Handler.token.encode())
-                and trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)):
-            Handler.token = ''
-            return True
-        return False
+    def authed(self):
+        held = self.headers.get('X-Session', '')
+        return bool(self.session) and hmac.compare_digest(held.encode(), self.session.encode())
+
+    def open_page(self, body):
+        """The page's first request: the address's token, spent once, for the session."""
+        given = body.get('t') if isinstance(body.get('t'), str) else ''
+        if sys.platform.startswith('linux') and peer_uid(self.client_address[1], self.server.server_address[1]) != os.getuid():
+            return self.send(403, {'error': 'forbidden'})
+        with OPENING:
+            if Handler.token and hmac.compare_digest(given.encode(), Handler.token.encode()):
+                Handler.spent, Handler.token = Handler.token, ''
+                return self.send(200, {'session': Handler.session})
+            if Handler.spent and hmac.compare_digest(given.encode(), Handler.spent.encode()):
+                self.life.end()  # someone else spent it first: their session ends with the server
+                return self.send(409, {'error': 'This address was opened somewhere else first, so the settings '
+                                                'server stopped. Run session-bar again.'})
+        return self.send(403, {'error': 'forbidden'})
 
     def do_GET(self):
-        if not self.ok():
-            if not self.opening():
-                return self.send(403, {'error': 'forbidden'})
-            with open(PAGE, 'rb') as f:
-                return self.send(200, f.read(), 'text/html; charset=utf-8', [(
-                    'Set-Cookie', f'{self.cookie}={self.session}; HttpOnly; SameSite=Strict; Path=/')])
-        if self.route == '/':
+        if not self.here():
+            return self.send(403, {'error': 'forbidden'})
+        if self.route == '/':  # the page holds no secret: its session comes from /api/open
             with open(PAGE, 'rb') as f:
                 return self.send(200, f.read(), 'text/html; charset=utf-8')
+        if not self.authed():
+            return self.send(403, {'error': 'forbidden'})
         if self.route == '/api/state':
             return self.send(200, {'cfg': sb.load_config(SAVE), 'places': sb.PLACES, 'what': WHAT,
                                    'kinds': {'text': sb.TEXT, 'meter': sb.METERS, 'chip': sb.CHIPS},
@@ -288,9 +307,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, {'error': 'not found'})
 
     def do_POST(self):
-        if not self.ok():
+        if not self.here() or (self.route != '/api/open' and not self.authed()):
             return self.send(403, {'error': 'forbidden'})
-        if self.route == '/api/bye':  # sendBeacon, as the page closes: text/plain, no body worth reading
+        if self.route == '/api/bye':  # as the page closes: no body worth reading
             self.life.bye(time.time())
             return self.send(200, {})
         size = int(self.headers.get('Content-Length') or 0)
@@ -301,6 +320,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self.send(400, {'error': 'bad json'})
         body = body if isinstance(body, dict) else {}
+        if self.route == '/api/open':
+            return self.open_page(body)
         self.life.ping(time.time())
         if self.route == '/api/ping':
             return self.send(200, {})
@@ -327,8 +348,7 @@ def make_server(port, life):
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     port = server.server_address[1]
     Handler.hosts, Handler.life = {f'127.0.0.1:{port}', f'localhost:{port}'}, life
-    Handler.token, Handler.session = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
-    Handler.cookie = f'session-bar-{port}'  # cookies are per host, not per port: one name per server
+    Handler.token, Handler.session, Handler.spent = secrets.token_urlsafe(24), secrets.token_urlsafe(24), ''
     return server
 
 
@@ -368,7 +388,7 @@ def main(argv=None):
         return detach(port)
     life = Life(time.time())
     server = make_server(port, life)
-    url = f'http://127.0.0.1:{server.server_address[1]}/?t={Handler.token}'
+    url = f'http://127.0.0.1:{server.server_address[1]}/#t={Handler.token}'
 
     def watch():
         while not life.over(time.time()):
