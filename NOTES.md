@@ -155,6 +155,21 @@ Python, and Python starts in 6.4 ms against Node's 26.5 ms (15-run medians, Node
   ToolProgress, CommandOutput, Spinner, TurnDuration, InfoNotice, SessionMode, PromptHint, AbovePrompt and Pane:
   not the status line, not the footer's notifications.
 
+## Learned on real machines (CI, 2026-10-20)
+
+`check_install.py` and the unit tests run at every push on Ubuntu (Python 3.8, latest), macOS (latest) and Windows
+(3.8, latest); all green since `ad27b0a`'s successors. What the runs taught:
+- **Windows:** Git Bash's `env -i` hands `SYSTEMROOT` and `USERPROFILE` on to a native `python.exe`, and the card
+  draws through it; through PowerShell (`-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command`), `& python`
+  gets the payload on stdin. `session-bar.cmd` and the sh launcher in Git Bash both open the page. A folder that is a
+  process's working folder cannot be removed, so a check waits for the page's server to stop.
+- **macOS:** `/var` is `/private/var` and `getcwd()` returns the latter, so paths are compared by their real path;
+  `http.server`'s `server_bind` calls `socket.getfqdn()`, a reverse lookup that took over 10 s there, so the server
+  binds without it; Python's `webbrowser` runs `/usr/bin/osascript` by its absolute path, so a browser is always
+  found, and it can be slow, so the launcher waits for it 5 s at most; under `env -i` the system adds
+  `__CF_USER_TEXT_ENCODING` (the text encoding, no key).
+- **Not covered by CI:** Claude Code drawing the card itself, a real browser opening on macOS under `env -i`.
+
 ## Facts from Claude Code 2.1.302's code
 
 All of these were read in the binary's strings (`strings -n 8 ~/.local/share/claude/versions/2.1.302`). Use python3,
