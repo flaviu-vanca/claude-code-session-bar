@@ -64,7 +64,7 @@ the card shows 1%. Spend is shown as it comes.
 | Place | Elements (the default ones in bold) |
 |---|---|
 | Top edge, left and right; any row | **model**, **effort**, thinking, style, agent, name (`/rename`), version, **cost**, **time**, api (API time), lines (+/-), clock, **repo** (linked to origin; ⇡ ⇣ ⇅), **cwd**, **session**, worktree, dirs (`/add-dir`), **mem**, **disks**, load, battery |
-| Meters, on any row | **ctx**, **5h**, **week**, spend (gateway only), hits (prompt cache hit ratio, green is good; read as a fraction ≤ 1, unverified on a real payload) |
+| Meters, on any row | **ctx**, **5h**, **week**, spend (gateway only), hits (prompt cache hit ratio, green is good: cache read tokens / all input tokens, 0..1, read in 2.1.303) |
 | Bottom edge (chips) | **cloud**, **rc**, mode, **no_transcript**, **update**, **cache** (and what a cold start costs), **miss** (a cache miss and why), big (context past 200k), drafts, **sandbox**, **working**, **pr**, **fast**, **vim** |
 
 By default the top left holds model and effort, the top right cost and time, row 1 ctx, 5h and week, and row 2
@@ -178,7 +178,9 @@ not grep: the local grep is ugrep and refuses wide patterns.
     session that installed it shows the notice, so another open one makes room for nothing;
   - `new task? /clear to save N tokens`: idle for `CLAUDE_CODE_IDLE_THRESHOLD_MINUTES` (75) since the last turn,
     with `CLAUDE_CODE_IDLE_TOKEN_THRESHOLD` (100k) tokens or more, until the next activity. The card takes the session
-    file's `status: idle` and `statusUpdatedAt`, the context's tokens and the launch environment (`idle_hint`).
+    file's `status: idle` and `statusUpdatedAt`, the context's tokens and those two variables from its own
+    environment (`idle_hint`). Since 2026-10-19 the card never reads another process's environment
+    (`/proc/<pid>/environ` held every key Claude Code was started with).
 - **What a configured status line hides:** `? for shortcuts`, `esc to interrupt` and the ctrl+t hints.
 
 ### Hiding native items

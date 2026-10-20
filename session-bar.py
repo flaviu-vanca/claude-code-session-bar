@@ -588,9 +588,9 @@ def card(d, width, now, h, meter=10, chips=(), cfg=None):
             if 'tokens' not in gone and ctx.get('context_window_size'):
                 g.append(P(f" {tokens(ctx.get('total_input_tokens') or 0)}/{tokens(ctx['context_window_size'])}"))
             return g
-        if name == 'hits':  # shortcut: hit_ratio read as a fraction up to 1; check it against a real payload
+        if name == 'hits':  # hit_ratio is cache read / all input tokens, 0..1 or null (read in 2.1.303)
             r = (d.get('prompt_cache') or {}).get('hit_ratio')
-            return gauge('hits', r * 100 if r <= 1 else r, m, good_high=True) if isinstance(r, (int, float)) else []
+            return gauge('hits', r * 100, m, good_high=True) if isinstance(r, (int, float)) else []
         v = rl.get({'5h': 'five_hour', 'week': 'seven_day', 'spend': 'spend_limit'}[name])
         if not v:
             return []
@@ -717,18 +717,9 @@ def count_json(folder):
         return 0
 
 
-def env_value(raw, name):
-    """`name`'s value in a NUL-separated environment, or None."""
-    for item in raw.split(b'\0'):
-        key, _, value = item.partition(b'=')
-        if key == name.encode():
-            return value.decode(errors='replace')
-    return None
-
-
-def env_flag(raw, name):
-    """Whether `name` is on in a NUL-separated environment, read as Claude Code reads a boolean: 1, true, yes, on."""
-    return (env_value(raw, name) or '').strip().lower() in ('1', 'true', 'yes', 'on')
+def env_flag(env, name):
+    """Whether `name` is on in an environment, read as Claude Code reads a boolean: 1, true, yes, on."""
+    return (env.get(name) or '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 
 def update_ready(newest, running):
@@ -744,7 +735,7 @@ def idle_hint(rec, d, env, now):
     threshold they can disagree."""
     def number(name, default):
         try:
-            return float(env_value(env, name))
+            return float(env.get(name))
         except (TypeError, ValueError):
             return default
 
@@ -753,15 +744,6 @@ def idle_hint(rec, d, env, now):
     return (rec.get('status') == 'idle' and isinstance(since, (int, float)) and not isinstance(since, bool)
             and tokens >= number('CLAUDE_CODE_IDLE_TOKEN_THRESHOLD', 1e5)
             and now - since / 1000 >= number('CLAUDE_CODE_IDLE_THRESHOLD_MINUTES', 75) * 60)
-
-
-def launch_env(pid):
-    """The environment a process was started with."""
-    try:
-        with open(f'/proc/{int(pid)}/environ', 'rb') as f:
-            return f.read()
-    except (OSError, TypeError, ValueError):
-        return b''
 
 
 def meter_arg(argv):
@@ -787,7 +769,7 @@ def main():
         rec = session_record(d.get('session_id'), os.path.join(home, '.claude', 'sessions'))
         edge = cfg['edge']
         rc = rec.get('bridgeSessionId')
-        env = launch_env(rec.get('pid'))
+        env = os.environ  # Claude Code hands its own environment to the command; only named variables are read
         s = {'rc': rc, 'busy': rec.get('status') == 'busy', 'sandbox': h.get('sandbox'),
              'newest': newest_version(os.path.join(home, '.local', 'share', 'claude', 'versions')),
              'no_transcript': env_flag(env, 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'),

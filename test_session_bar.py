@@ -413,17 +413,23 @@ with tempfile.TemporaryDirectory() as t:
     assert 'thinking' not in top_line('busy', CALL) and 'thinking' not in top_line('idle', RESULT)
 
 F = 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'
-assert sb.env_flag(b'A=1\0' + F.encode() + b'=1\0', F) is True and sb.env_flag(F.encode() + b'=true\0', F) is True
-assert sb.env_flag(F.encode() + b'=0\0', F) is False and sb.env_flag(b'', F) is False
-assert sb.env_flag(b'X_' + F.encode() + b'=1\0', F) is False
+assert sb.env_flag({'A': '1', F: '1'}, F) is True and sb.env_flag({F: 'true'}, F) is True
+assert sb.env_flag({F: '0'}, F) is False and sb.env_flag({}, F) is False
+assert sb.env_flag({'X_' + F: '1'}, F) is False
+
+# the card reads named variables from its own environment only: never another process's, which holds every key
+assert '/environ' not in open(spec.origin).read()
+run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(), capture_output=True,
+                     env={**env, F: '1'})
+assert '⚠ no transcript' in run.stdout.decode(), run
 
 # Claude Code's idle hint shows once the session has been idle 75 minutes since its turn ended, with 100k tokens or
-# more; its launch environment can move both thresholds
-idle = lambda minutes, tokens=200_000, env=b'', status='idle': sb.idle_hint(
+# more; its environment can move both thresholds
+idle = lambda minutes, tokens=200_000, env={}, status='idle': sb.idle_hint(
     {'status': status, 'statusUpdatedAt': (NOW - minutes * 60) * 1000}, {'context_window': {'total_input_tokens': tokens}}, env, NOW)
 assert idle(76) and not idle(74) and not idle(76, tokens=99_000) and not idle(76, status='busy')
-assert idle(11, env=b'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES=10\0') and idle(76, 60_000, b'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD=50000\0')
-assert idle(76, env=b'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES=x\0') and not sb.idle_hint({'status': 'idle'}, FULL, b'', NOW)
+assert idle(11, env={'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES': '10'}) and idle(76, 60_000, {'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD': '50000'})
+assert idle(76, env={'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES': 'x'}) and not sb.idle_hint({'status': 'idle'}, FULL, {}, NOW)
 assert sb.update_ready('2.1.303', '2.1.302') and not sb.update_ready('2.1.302', '2.1.302')
 assert not sb.update_ready(None, '2.1.302') and not sb.update_ready('2.1.303', None)
 
