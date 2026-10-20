@@ -11,6 +11,8 @@ card; nothing here reaches the model.
 import importlib.util
 import json
 import os
+import hmac
+import secrets
 import shutil
 import stat
 import subprocess
@@ -18,6 +20,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -39,6 +42,20 @@ def mine(path, kind):
     return kind(st.st_mode) and (os.name == 'nt' or (st.st_uid == os.getuid() and not st.st_mode & 0o002))
 
 
+def reads_layout(dot):
+    """Whether this project's local status line hands the card its layout (install.py --scope project): otherwise a
+    committed layout is the team's, not what this user's card draws, and editing it would change nothing on screen."""
+    try:  # O_NONBLOCK and fstat, as the card reads a layout: a planted pipe cannot stall the page
+        fd = os.open(os.path.join(dot, 'settings.local.json'), os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(fd, 'rb') as f:
+            data = f.read(sb.MAX_CONFIG + 1) if stat.S_ISREG(os.fstat(fd).st_mode) else b''
+        line = json.loads(data).get('statusLine') if 0 < len(data) <= sb.MAX_CONFIG else None
+    except (OSError, ValueError, AttributeError):
+        return False
+    command = line.get('command') if isinstance(line, dict) else None
+    return isinstance(command, str) and 'SESSION_BAR_CONFIG' in command and '/.claude/session-bar.json' in command
+
+
 def layout_for(cwd, user_layout, home):
     """The layout that applies in `cwd`: the nearest project's .claude/session-bar.json, a regular file, found going
     up to home (home itself is not a project) or, outside home, to the root; else the user's."""
@@ -48,7 +65,7 @@ def layout_for(cwd, user_layout, home):
     while not (under and same(d, home)):
         dot = os.path.join(d, '.claude')
         path = os.path.join(dot, 'session-bar.json')
-        if mine(dot, stat.S_ISDIR) and mine(path, stat.S_ISREG):
+        if mine(dot, stat.S_ISDIR) and mine(path, stat.S_ISREG) and reads_layout(dot):
             return path, 'project'
         if os.path.dirname(d) == d:
             break
@@ -214,7 +231,7 @@ class Life:
 
 
 class Handler(BaseHTTPRequestHandler):
-    hosts, life = set(), None
+    hosts, life, token = set(), None, ''
 
     def send(self, code, body, kind='application/json'):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -226,15 +243,20 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def ok(self):
-        return trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)
+        """This machine's page (Host, Origin) holding this server's token (?t=): another user of the machine can reach
+        127.0.0.1 too, but never sees the address the browser was given. Sets self.route, the path without its query."""
+        self.route, _, query = self.path.partition('?')
+        given = urllib.parse.parse_qs(query).get('t', [''])[0]
+        return (trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)
+                and hmac.compare_digest(given.encode(), self.token.encode()))
 
     def do_GET(self):
         if not self.ok():
             return self.send(403, {'error': 'forbidden'})
-        if self.path == '/':
+        if self.route == '/':
             with open(PAGE, 'rb') as f:
                 return self.send(200, f.read(), 'text/html; charset=utf-8')
-        if self.path == '/api/state':
+        if self.route == '/api/state':
             return self.send(200, {'cfg': sb.load_config(SAVE), 'places': sb.PLACES, 'what': WHAT,
                                    'kinds': {'text': sb.TEXT, 'meter': sb.METERS, 'chip': sb.CHIPS},
                                    'palettes': sb.PALETTES, 'columns': shutil.get_terminal_size((160, 24)).columns,
@@ -244,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.ok():
             return self.send(403, {'error': 'forbidden'})
-        if self.path == '/api/bye':  # sendBeacon, as the page closes: text/plain, no body worth reading
+        if self.route == '/api/bye':  # sendBeacon, as the page closes: text/plain, no body worth reading
             self.life.bye(time.time())
             return self.send(200, {})
         size = int(self.headers.get('Content-Length') or 0)
@@ -256,16 +278,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error': 'bad json'})
         body = body if isinstance(body, dict) else {}
         self.life.ping(time.time())
-        if self.path == '/api/ping':
+        if self.route == '/api/ping':
             return self.send(200, {})
         cfg = clean(body.get('cfg'))
-        if self.path == '/api/render':
+        if self.route == '/api/render':
             columns = body.get('columns')
             columns = max(30, min(300, columns)) if isinstance(columns, int) and not isinstance(columns, bool) else 160
             d = sample()
             return self.send(200, {'cfg': cfg, **render(cfg, columns, body.get('rc') is True, d),
                                    'previews': previews(cfg, d)})
-        if self.path == '/api/save':
+        if self.route == '/api/save':
             try:
                 save(cfg, SAVE)
             except (OSError, ValueError) as e:
@@ -281,6 +303,7 @@ def make_server(port, life):
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     port = server.server_address[1]
     Handler.hosts, Handler.life = {f'127.0.0.1:{port}', f'localhost:{port}'}, life
+    Handler.token = secrets.token_urlsafe(24)
     return server
 
 
@@ -320,7 +343,7 @@ def main(argv=None):
         return detach(port)
     life = Life(time.time())
     server = make_server(port, life)
-    url = f'http://127.0.0.1:{server.server_address[1]}/'
+    url = f'http://127.0.0.1:{server.server_address[1]}/?t={Handler.token}'
 
     def watch():
         while not life.over(time.time()):
@@ -328,6 +351,8 @@ def main(argv=None):
         server.shutdown()
 
     threading.Thread(target=watch, daemon=True).start()
+    serving = threading.Thread(target=server.serve_forever, daemon=True)  # before the browser: a console one blocks
+    serving.start()
     if mode == '--serve':  # one line to the launcher, then nothing: a browser it starts writes to devnull, not to it
         out, devnull = os.dup(1), os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, 1)
@@ -338,9 +363,10 @@ def main(argv=None):
         print(f'Session Bar settings: {url}\nIt stops a few seconds after the page closes; Ctrl+C stops it now.', flush=True)
         webbrowser.open(url)
     try:
-        server.serve_forever()
+        while serving.is_alive():  # join() with a timeout, so Ctrl+C reaches this thread
+            serving.join(0.5)
     except KeyboardInterrupt:
-        pass
+        server.shutdown()
     finally:
         server.server_close()
 

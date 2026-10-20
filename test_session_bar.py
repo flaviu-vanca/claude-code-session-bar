@@ -612,10 +612,19 @@ with tempfile.TemporaryDirectory() as t:
     web.SAVE = os.path.join(t, 'session-bar.json')
     srv = web.make_server(0, web.Life(time.time()))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = f'http://127.0.0.1:{srv.server_address[1]}'
+    base, T = f'http://127.0.0.1:{srv.server_address[1]}', '?t=' + web.Handler.token
     post = lambda path, body, **h: urllib.request.urlopen(urllib.request.Request(
-        base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **h}), timeout=5)
-    st = json.load(urllib.request.urlopen(base + '/api/state', timeout=5))
+        base + path + T, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **h}), timeout=5)
+    # the page and its API answer only with the address's token: another user of this machine cannot drive them
+    for req in (base + '/', base + '/api/state', base + '/api/state?t=wrong', urllib.request.Request(
+            base + '/api/save', data=b'{}', headers={'Content-Type': 'application/json'})):
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            raise AssertionError(f'answered without the token: {req}')
+        except urllib.error.HTTPError as e:
+            assert e.code == 403, e.code
+    assert len(web.Handler.token) >= 20
+    st = json.load(urllib.request.urlopen(base + '/api/state' + T, timeout=5))
     assert st['cfg'] == sb.load_config(web.SAVE) and set(st['palettes']) == set(sb.PALETTES), st['cfg']
     assert set(st) == {'cfg', 'kinds', 'places', 'what', 'palettes', 'columns', 'file', 'scope'}, set(st)  # what the page reads
     assert st['file'] == web.SAVE, st['file']
@@ -651,16 +660,16 @@ with tempfile.TemporaryDirectory() as t:
         conn.close()
         return r.status
 
-    J = {'Content-Type': 'application/json'}
-    assert status('POST', '/api/save', b'{}', **J, **{'Content-Length': str(web.MAX_BODY + 1)}) == 400
-    assert status('POST', '/api/save', b'{oops', **J) == 400 and status('POST', '/api/save', b'{}', **{'Content-Type': 'text/plain'}) == 400
-    assert {status('GET', p) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
+    J, T = {'Content-Type': 'application/json'}, '?t=' + web.Handler.token
+    assert status('POST', '/api/save' + T, b'{}', **J, **{'Content-Length': str(web.MAX_BODY + 1)}) == 400
+    assert status('POST', '/api/save' + T, b'{oops', **J) == 400 and status('POST', '/api/save' + T, b'{}', **{'Content-Type': 'text/plain'}) == 400
+    assert {status('GET', p + T) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
     assert not os.path.exists(web.SAVE)
     # checked again at save time: a folder swapped for a symlink after the page opened is not written into
     os.makedirs(os.path.join(t, 'elsewhere'))
     os.symlink(os.path.join(t, 'elsewhere'), os.path.join(t, 'via'))
     web.SAVE = os.path.join(t, 'via', 'session-bar.json')
-    assert status('POST', '/api/save', json.dumps({'cfg': {}}).encode(), **J) == 500 and os.listdir(os.path.join(t, 'elsewhere')) == []
+    assert status('POST', '/api/save' + T, json.dumps({'cfg': {}}).encode(), **J) == 500 and os.listdir(os.path.join(t, 'elsewhere')) == []
     srv.shutdown()
     srv.server_close()
 
@@ -677,12 +686,26 @@ with tempfile.TemporaryDirectory() as t:
     layout = os.path.join(proj, '.claude', 'session-bar.json')
     with open(layout, 'w') as f:  # a hostile project layout: unknown elements, wrong types, past the 64 KiB cap
         f.write('{"rows": [["nope", 5]], "meter": "x"' + ' ' * 70_000 + '}')
+    # a project's layout is the page's only where the card reads it: that project's local status line points at it
+    assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (user, 'user'), 'no project install yet'
+    with open(os.path.join(proj, '.claude', 'settings.local.json'), 'w') as f:
+        json.dump({'statusLine': {'type': 'command', 'command': 'npx ccstatusline'}}, f)
+    assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (user, 'user'), 'another tool draws here'
+    reads = json.dumps({'statusLine': {'type': 'command', 'command':
+                        'env -i SESSION_BAR_CONFIG="$CLAUDE_PROJECT_DIR/.claude/session-bar.json" python3 -I -S card.py'}})
+
+    def installed(folder):
+        with open(os.path.join(folder, '.claude', 'settings.local.json'), 'w') as f:
+            f.write(reads)
+
+    installed(proj)
     assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (layout, 'project')
     # a layout the page would save is only one of this user's that no one else can write, in a real .claude folder;
     # and a save never writes through a planted temporary file
     shared = os.path.join(home, 'shared')
     os.makedirs(os.path.join(shared, '.claude'))
     open(os.path.join(shared, '.claude', 'session-bar.json'), 'w').close()
+    installed(shared)
     os.chmod(os.path.join(shared, '.claude'), 0o777)
     linked = os.path.join(home, 'linked')
     os.makedirs(linked)
@@ -690,6 +713,7 @@ with tempfile.TemporaryDirectory() as t:
     loose = os.path.join(home, 'loose')
     os.makedirs(os.path.join(loose, '.claude'))
     open(os.path.join(loose, '.claude', 'session-bar.json'), 'w').close()
+    installed(loose)
     os.chmod(os.path.join(loose, '.claude', 'session-bar.json'), 0o666)
     assert [web.layout_for(p, user, home)[1] for p in (shared, linked, loose)] == ['user'] * 3
     try:
@@ -710,19 +734,50 @@ with tempfile.TemporaryDirectory() as t:
     run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', '0'], cwd=os.path.join(proj, 'src'),
                          env={**bare, 'HOME': home, 'PATH': '/nonexistent'}, capture_output=True, text=True, timeout=15)
     assert run.returncode == 0 and time.time() - began < 5 and run.stdout.count('\n') == 1 and 'http://127.0.0.1:' in run.stdout, run
-    url = run.stdout.strip().rsplit(' ', 1)[1]
-    st = json.load(urllib.request.urlopen(url + 'api/state', timeout=5))
+    root, token = run.stdout.strip().rsplit(' ', 1)[1].split('/?t=')
+    st = json.load(urllib.request.urlopen(f'{root}/api/state?t={token}', timeout=5))
     assert st['scope'] == 'project' and st['file'] == layout and st['cfg'] == sb.load_config('/nonexistent'), st
-    urllib.request.urlopen(urllib.request.Request(url + 'api/bye', data=b''), timeout=5)
+    urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye?t={token}', data=b''), timeout=5)
     import socket
 
-    with socket.socket() as s:
-        s.bind(('127.0.0.1', 0))
-        port = s.getsockname()[1]
-    run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', str(port)], cwd=proj,
-                         env={**bare, 'HOME': home, 'BROWSER': 'true', 'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=15)
+    def browser(name, body):  # a stand-in browser: BROWSER runs it with the page's address
+        path = os.path.join(t, name)
+        with open(path, 'w') as f:
+            f.write('#!/bin/sh\n' + body + '\n')
+        os.chmod(path, 0o755)
+        return path
+
+    def free_port():
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            return s.getsockname()[1]
+
+    opened = os.path.join(t, 'opened.txt')
+    run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', str(free_port())], cwd=proj, capture_output=True, text=True,
+                         env={**bare, 'HOME': home, 'BROWSER': browser('record', f'echo "$1" > {opened}'), 'PATH': '/usr/bin:/bin'}, timeout=15)
     assert run.returncode == 0 and run.stdout == '', run
-    urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{port}/api/bye', data=b''), timeout=5)
+    with open(opened) as f:
+        url = f.read().strip()
+    assert '/?t=' in url, url  # the browser gets the address with its token
+    urllib.request.urlopen(urllib.request.Request(url.replace('/?t=', '/api/bye?t='), data=b''), timeout=5)
+    # the server answers while a browser that blocks (a console one) still runs
+    port = free_port()
+    slow = subprocess.Popen([sys.executable, '-I', '-S', wspec.origin, '--serve', str(port)], cwd=proj, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, env={**bare, 'HOME': home, 'BROWSER': browser('block', 'sleep 5'), 'PATH': '/usr/bin:/bin'})
+    try:
+        for _ in range(40):
+            try:
+                conn = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+                conn.request('GET', '/api/state')
+                assert conn.getresponse().status == 403
+                break
+            except ConnectionRefusedError:
+                time.sleep(0.05)
+        else:
+            raise AssertionError('the server never listened')
+    finally:
+        slow.kill()
+        slow.wait()
 
 # the installer (install.py): the status line command starts Python with an empty environment and a short list, so
 # no key Claude Code was started with reaches the card; paths with a space or a quote still run
