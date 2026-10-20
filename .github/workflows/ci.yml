@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - name: Unit tests (they lean on POSIX: fifos, signals, sh)
+      - name: 'Unit tests (they lean on POSIX: fifos, signals, sh)'
         if: runner.os != 'Windows'
         run: python -I test_session_bar.py
       - name: Install and run it the way Claude Code does
