@@ -619,6 +619,23 @@ with tempfile.TemporaryDirectory() as t:
     with open(layout, 'w') as f:  # a hostile project layout: unknown elements, wrong types, past the 64 KiB cap
         f.write('{"rows": [["nope", 5]], "meter": "x"' + ' ' * 70_000 + '}')
     assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (layout, 'project')
+    # a layout the page would save is only one of this user's that no one else can write, in a real .claude folder;
+    # and a save never writes through a planted temporary file
+    shared = os.path.join(home, 'shared')
+    os.makedirs(os.path.join(shared, '.claude'))
+    open(os.path.join(shared, '.claude', 'session-bar.json'), 'w').close()
+    os.chmod(os.path.join(shared, '.claude'), 0o777)
+    linked = os.path.join(home, 'linked')
+    os.makedirs(linked)
+    os.symlink(os.path.join(proj, '.claude'), os.path.join(linked, '.claude'))
+    loose = os.path.join(home, 'loose')
+    os.makedirs(os.path.join(loose, '.claude'))
+    open(os.path.join(loose, '.claude', 'session-bar.json'), 'w').close()
+    os.chmod(os.path.join(loose, '.claude', 'session-bar.json'), 0o666)
+    assert [web.layout_for(p, user, home)[1] for p in (shared, linked, loose)] == ['user'] * 3
+    os.symlink(os.path.join(t, 'victim'), os.path.join(shared, '.claude', 'session-bar.json.tmp'))
+    web.save(sb.DEFAULT, os.path.join(shared, '.claude', 'session-bar.json'))
+    assert not os.path.exists(os.path.join(t, 'victim')) and sb.load_config(os.path.join(shared, '.claude', 'session-bar.json')) == sb.DEFAULT
     # started detached, the page's server answers for the project's layout; with no browser to open, the address is
     # printed; with one, nothing is (so `! session-bar` adds next to nothing to the conversation)
     bare = {k: v for k, v in os.environ.items() if k not in ('DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'SESSION_BAR_CONFIG')}

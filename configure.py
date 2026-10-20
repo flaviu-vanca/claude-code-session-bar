@@ -28,18 +28,27 @@ spec.loader.exec_module(sb)
 PAGE = os.path.join(HERE, 'configure-web.html')
 
 
+def mine(path, kind):
+    """Whether `path` is of `kind` itself (no symlink) and, on POSIX, this user's and not writable by everyone: what
+    the page saves, another user could otherwise plant in a shared folder. Group-writable stays allowed: with a
+    user-private group (umask 002) every file of one's own is."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return kind(st.st_mode) and (os.name == 'nt' or (st.st_uid == os.getuid() and not st.st_mode & 0o002))
+
+
 def layout_for(cwd, user_layout, home):
     """The layout that applies in `cwd`: the nearest project's .claude/session-bar.json, a regular file, found going
     up to home (home itself is not a project) or, outside home, to the root; else the user's."""
     d, home = os.path.abspath(cwd), os.path.abspath(home)
     under = d.startswith(home + os.sep)
     while not (under and d == home):
-        path = os.path.join(d, '.claude', 'session-bar.json')
-        try:
-            if stat.S_ISREG(os.lstat(path).st_mode):
-                return path, 'project'
-        except OSError:
-            pass
+        dot = os.path.join(d, '.claude')
+        path = os.path.join(dot, 'session-bar.json')
+        if mine(dot, stat.S_ISDIR) and mine(path, stat.S_ISREG):
+            return path, 'project'
         if os.path.dirname(d) == d:
             break
         d = os.path.dirname(d)
@@ -94,12 +103,18 @@ STATES = {'rc': 'session_01X', 'busy': True, 'newest': '2.1.303', 'no_transcript
 
 
 def save(cfg, path):
-    """Writes the settings whole: a temporary file renamed over the old, so the card never reads half of one."""
-    tmp = path + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump({k: cfg[k] for k in sb.DEFAULT}, f, indent=2)
-        f.write('\n')
-    os.replace(tmp, path)
+    """Writes the settings whole: a temporary file renamed over the old, so the card never reads half of one. The
+    temporary file gets a fresh name (mkstemp), so one planted in a project's .claude is never written through."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or '.', prefix='.session-bar-', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            json.dump({k: cfg[k] for k in sb.DEFAULT}, f, indent=2)
+            f.write('\n')
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 def clean(raw):
