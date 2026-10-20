@@ -58,7 +58,7 @@ def reads_layout(dot):
 def layout_for(cwd, user_layout, home):
     """The layout that applies in `cwd`: the nearest project's .claude/session-bar.json, a regular file, found going
     up to home (home itself is not a project) or, outside home, to the root; else the user's."""
-    d, home = os.path.abspath(cwd), os.path.abspath(home)
+    d, home = os.path.realpath(cwd), os.path.realpath(home)  # macOS: /var is /private/var, and getcwd says the latter
     same = lambda a, b: os.path.normcase(a) == os.path.normcase(b)  # C:\Users\Ana is c:\users\ana on Windows
     under = same(d, home) or os.path.normcase(d).startswith(os.path.normcase(home) + os.sep)
     while not (under and same(d, home)):
@@ -226,24 +226,27 @@ class Life:
         self.last, self.seen = now - self.quiet + self.grace, True
 
     def over(self, now):
-        return now - self.last > (self.quiet if self.seen else self.first)
+        return self.ended or now - self.last > (self.quiet if self.seen else self.first)
 
     def end(self):
-        self.last, self.seen = float('-inf'), True
+        """For good: no ping or goodbye undoes it, and the session is void at once."""
+        self.ended = True
+        Handler.session = ''
+
+    ended = False
 
 
-def peer_uid(client_port, server_port):
-    """The user owning the client end of a loopback connection, from /proc/net/tcp (Linux), or None."""
-    want = f':{client_port:04X}', f':{server_port:04X}'
+def peer_uid(client_port, server_port, table='/proc/net/tcp'):
+    """The user owning the client end of a loopback connection, from /proc/net/tcp (Linux): the one row whose local
+    end is 127.0.0.1:client_port and remote end 127.0.0.1:server_port, or None (none, several, unreadable)."""
+    want = f'0100007F:{client_port:04X}', f'0100007F:{server_port:04X}'  # 127.0.0.1, as the kernel prints it
     try:
-        with open('/proc/net/tcp') as f:
-            for line in f.readlines()[1:]:
-                parts = line.split()
-                if parts[1].endswith(want[0]) and parts[2].endswith(want[1]):
-                    return int(parts[7])
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
+        with open(table) as f:
+            rows = [line.split() for line in f.readlines()[1:]]
+        found = [int(r[7]) for r in rows if len(r) > 7 and (r[1], r[2]) == want]
+    except (OSError, ValueError):
+        return None
+    return found[0] if len(found) == 1 else None
 
 
 OPENING = threading.Lock()  # the token is checked and spent in one step: two requests cannot both spend it

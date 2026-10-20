@@ -659,6 +659,17 @@ with tempfile.TemporaryDirectory() as t:
     assert sb.load_config(web.SAVE) == c
     # on Linux the token is taken only from a connection of this user's (/proc/net/tcp says whose a socket is): one
     # who read it in ps under another account gets nothing
+    # only the exact row counts: the client's socket, 127.0.0.1 at both ends, the one such row
+    with open(os.path.join(t, 'tcp'), 'w') as f:
+        f.write('  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n'
+                '   0: 0200007F:D431 0100007F:1F90 01 00000000:00000000 00:00000000 00000000  1234        0 1 1\n')
+    assert web.peer_uid(0xD431, 0x1F90, os.path.join(t, 'tcp')) is None, '127.0.0.2 is not this connection'
+    with open(os.path.join(t, 'tcp'), 'a') as f:
+        f.write('   1: 0100007F:D431 0100007F:1F90 01 00000000:00000000 00:00000000 00000000  1000        0 2 1\n')
+    assert web.peer_uid(0xD431, 0x1F90, os.path.join(t, 'tcp')) == 1000
+    with open(os.path.join(t, 'tcp'), 'a') as f:
+        f.write('   2: 0100007F:D431 0100007F:1F90 01 00000000:00000000 00:00000000 00000000  1234        0 3 1\n')
+    assert web.peer_uid(0xD431, 0x1F90, os.path.join(t, 'tcp')) is None, 'two rows: no telling whose'
     if sys.platform.startswith('linux'):
         with socket.create_connection(('127.0.0.1', srv.server_address[1])) as probe:
             assert web.peer_uid(probe.getsockname()[1], srv.server_address[1]) == os.getuid()
@@ -673,6 +684,10 @@ with tempfile.TemporaryDirectory() as t:
     assert not life.over(time.time())
     refused(urllib.request.Request(base + '/api/open', data=json.dumps({'t': token}).encode(),
                                    headers={'Content-Type': 'application/json'}), 409)
+    assert life.over(time.time())
+    # and it stays ended: the session is void at once, and a ping from whoever holds it cannot revive the server
+    refused(urllib.request.Request(base + '/api/state', headers=C))
+    life.ping(time.time())
     assert life.over(time.time())
     srv.shutdown()
     srv.server_close()
@@ -739,7 +754,7 @@ with tempfile.TemporaryDirectory() as t:
             f.write(reads)
 
     installed(proj)
-    assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (layout, 'project')
+    assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (os.path.realpath(layout), 'project')
     # a layout the page would save is only one of this user's that no one else can write, in a real .claude folder;
     # and a save never writes through a planted temporary file
     shared = os.path.join(home, 'shared')
@@ -782,7 +797,7 @@ with tempfile.TemporaryDirectory() as t:
 
     root, C = session(url)
     st = json.load(urllib.request.urlopen(urllib.request.Request(f'{root}/api/state', headers=C), timeout=5))
-    assert st['scope'] == 'project' and st['file'] == layout and st['cfg'] == sb.load_config('/nonexistent'), st
+    assert st['scope'] == 'project' and os.path.realpath(st['file']) == os.path.realpath(layout) and st['cfg'] == sb.load_config('/nonexistent'), st
     urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
     import socket
 
