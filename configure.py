@@ -43,8 +43,9 @@ def layout_for(cwd, user_layout, home):
     """The layout that applies in `cwd`: the nearest project's .claude/session-bar.json, a regular file, found going
     up to home (home itself is not a project) or, outside home, to the root; else the user's."""
     d, home = os.path.abspath(cwd), os.path.abspath(home)
-    under = d.startswith(home + os.sep)
-    while not (under and d == home):
+    same = lambda a, b: os.path.normcase(a) == os.path.normcase(b)  # C:\Users\Ana is c:\users\ana on Windows
+    under = same(d, home) or os.path.normcase(d).startswith(os.path.normcase(home) + os.sep)
+    while not (under and same(d, home)):
         dot = os.path.join(d, '.claude')
         path = os.path.join(dot, 'session-bar.json')
         if mine(dot, stat.S_ISDIR) and mine(path, stat.S_ISREG):
@@ -281,12 +282,20 @@ def make_server(port, life):
     return server
 
 
+# what the server keeps of its environment, whatever launcher started it (install.PAGE_ENV, the same; a test checks)
+PAGE_ENV = ['HOME', 'USERPROFILE', 'SYSTEMROOT', 'COLUMNS', 'CLAUDE_CONFIG_DIR', 'XDG_DATA_HOME',
+            'CLAUDE_CODE_SKIP_PROMPT_HISTORY', 'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES', 'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD',
+            'PATH', 'DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'XDG_CURRENT_DESKTOP',
+            'DBUS_SESSION_BUS_ADDRESS', 'BROWSER', 'TMPDIR', 'TEMP', 'TMP']
+
+
 def detach(port):
     """Starts the server in a process of its own and returns: the address is printed only when no browser opened, so
     `! session-bar` in Claude Code adds next to nothing to the conversation."""
     kw = {'creationflags': 0x8 | 0x200} if os.name == 'nt' else {'start_new_session': True}  # DETACHED, NEW_GROUP
+    env = {k: v for k, v in os.environ.items() if k in PAGE_ENV}  # a .cmd launcher has no env -i: keys stop here
     child = subprocess.Popen([sys.executable, '-I', '-S', os.path.abspath(__file__), '--serve', str(port)],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kw)
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, **kw)
     first = []
     reader = threading.Thread(target=lambda: first.append(child.stdout.readline()), daemon=True)
     reader.start()

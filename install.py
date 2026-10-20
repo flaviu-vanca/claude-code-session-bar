@@ -28,8 +28,8 @@ MARKER = 'session-bar launcher (claude-skin install.py)'  # uninstall removes on
 CARD_ENV = ['HOME', 'USERPROFILE', 'SYSTEMROOT', 'COLUMNS', 'CLAUDE_CONFIG_DIR', 'XDG_DATA_HOME',
             'CLAUDE_CODE_SKIP_PROMPT_HISTORY', 'CLAUDE_CODE_IDLE_THRESHOLD_MINUTES', 'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD']
 # what the settings page needs on top: a browser to open, a folder for its temporary files
-PAGE_ENV = CARD_ENV + ['PATH', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS',
-                       'BROWSER', 'TMPDIR', 'TEMP', 'TMP']
+PAGE_ENV = CARD_ENV + ['PATH', 'DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'XDG_CURRENT_DESKTOP',
+                       'DBUS_SESSION_BUS_ADDRESS', 'BROWSER', 'TMPDIR', 'TEMP', 'TMP']  # configure.PAGE_ENV, the same
 PROJECT_LAYOUT = '$CLAUDE_PROJECT_DIR/.claude/session-bar.json'
 CONTROL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')  # C0 but tab and newline, and C1
 
@@ -126,7 +126,12 @@ def write_settings(path, data, stamp, backup_dir=None):
 
 
 def settings_diff(old, new, path):
-    return ''.join(difflib.unified_diff(dump(old).splitlines(True), dump(new).splitlines(True), path, path))
+    """The change, its lines only, with every value of an env block hidden: this output can land in a conversation."""
+    def hidden(data):
+        env = data.get('env')
+        return {**data, 'env': {k: '<hidden>' for k in env}} if isinstance(env, dict) else data
+    return ''.join(difflib.unified_diff(dump(hidden(old)).splitlines(True), dump(hidden(new)).splitlines(True),
+                                        path, path, n=0))
 
 
 def is_ours(line, script):
@@ -152,17 +157,38 @@ def write_launcher(bin_dir, python, configure, windows):
     PAGE_ENV, and on Windows a .cmd for PowerShell too. Returns the paths written."""
     os.makedirs(bin_dir, exist_ok=True)
     names = ' '.join(f'{n}="${n}"' for n in PAGE_ENV)
-    sh = os.path.join(bin_dir, 'session-bar')
-    with open(sh, 'w', newline='\n') as f:
-        f.write(f'#!/bin/sh\n# {MARKER}\nexec env -i {names} {sh_word(python)} -I -S {sh_word(configure)} --detach "$@"\n')
-    os.chmod(sh, 0o755)
-    paths = [sh]
+    sh, cmd = os.path.join(bin_dir, 'session-bar'), os.path.join(bin_dir, 'session-bar.cmd')
+    files = [(sh, '\n', f'#!/bin/sh\n# {MARKER}\nexec env -i {names} {sh_word(python)} -I -S {sh_word(configure)} --detach "$@"\n')]
     if windows:
-        cmd = os.path.join(bin_dir, 'session-bar.cmd')
-        with open(cmd, 'w', newline='\r\n') as f:
-            f.write(f'@echo off\nrem {MARKER}\n"{python}" -I -S "{configure}" --detach %*\n')
-        paths.append(cmd)
+        files.append((cmd, '\r\n', f'@echo off\nrem {MARKER}\n"{cmd_path(python)}" -I -S "{cmd_path(configure)}" --detach %*\n'))
+    paths = []
+    for path, newline, text in files:
+        if os.path.lexists(path) and not launcher_of_ours(path):
+            print(f'{path} is not the Session Bar\'s launcher; left as it is.')
+            continue
+        with open(path, 'w', encoding='utf-8', newline=newline) as f:
+            f.write(text)
+        os.chmod(path, 0o755)
+        paths.append(path)
     return paths
+
+
+def launcher_of_ours(path):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return MARKER in f.read(4096)
+    except OSError:
+        return False
+
+
+def cmd_path(path):
+    """`path` for a .cmd file: % doubled, and the home folder as %USERPROFILE%, so a home named with Ș or é stays
+    ASCII (cmd.exe reads a batch file in the console's code page, not UTF-8)."""
+    home = os.path.expanduser('~')
+    path = path.replace('%', '%%')
+    if os.path.normcase(path).startswith(os.path.normcase(home.replace('%', '%%')) + os.sep):
+        path = '%USERPROFILE%' + path[len(home.replace('%', '%%')):]
+    return path
 
 
 def saved(backup):
@@ -191,14 +217,8 @@ def uninstall(args, old, path, code, script, bin_dir, layouts, backups):
             if os.path.isfile(os.path.join(code, name)):
                 os.remove(os.path.join(code, name))
         for name in ('session-bar', 'session-bar.cmd'):
-            launcher = os.path.join(bin_dir, name)
-            try:
-                with open(launcher, encoding='utf-8', errors='replace') as f:
-                    mine = MARKER in f.read(4096)
-            except OSError:
-                continue
-            if mine:
-                os.remove(launcher)
+            if launcher_of_ours(os.path.join(bin_dir, name)):
+                os.remove(os.path.join(bin_dir, name))
     for kept in dict.fromkeys(layouts):
         if os.path.isfile(kept):
             print(f'Kept the layout {kept}')
@@ -213,6 +233,7 @@ def main(argv=None):
     ap.add_argument('--dry-run', action='store_true', help='show the change, write nothing')
     ap.add_argument('--yes', action='store_true', help='replace a status line that is not the Session Bar')
     args = ap.parse_args(argv)
+    sys.stdout.reconfigure(errors='replace')  # a cp1252 console prints Ș as ?, instead of stopping halfway
     card = load_card()
     claude, windows = card.claude_dir(os.environ), os.name == 'nt'
     code = os.path.join(claude, 'session-bar')

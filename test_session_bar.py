@@ -210,6 +210,19 @@ with tempfile.TemporaryDirectory() as t:
         f.write(('0' * 40 + ' refs/tags/x\n') * 40_000)  # 2 MB
     assert sb.git_sync(t, 'main') in (None, '⇡', '⇣', '⇅'), 'a huge packed-refs is read only in part'
 
+# outside a repository, the search for .git ends at a Windows root too (dirname('C:\\') is 'C:\\'), simulated here
+import ntpath
+import types
+
+saved = sb.os
+sb.os = types.SimpleNamespace(path=ntpath)
+signal.alarm(2)
+try:
+    assert sb.git_dir('C:\\work\\app') == (None, None) and sb.git_dir('\\\\server\\share\\x') == (None, None)
+finally:
+    signal.alarm(0)
+    sb.os = saved
+
 # links are https only: a file://, javascript: or ssh:// link would open on a click
 assert sb.P('x', link='file:///etc/passwd')[4] is None and sb.P('x', link='javascript:x')[4] is None
 assert sb.P('x', link='ssh://h/x')[4] is None and sb.P('x', link='https://github.com/o/r')[4] == 'https://github.com/o/r'
@@ -227,6 +240,24 @@ with tempfile.TemporaryDirectory() as t:
     with open(path, 'w') as f:
         f.write('{"meter": 7' + ' ' * 70_000 + '}')
     assert sb.load_config(path) == sb.load_config('/nonexistent') and sb.MAX_CONFIG == 64 * 1024
+    # a layout of the wrong shape keeps the defaults it gets wrong, never stops the card; a pipe is not read
+    for raw in ({'palette': []}, {'palette': {}}, {'rows': 5}, {'rows': [5, 'x']}, {'top_left': {'a': 1}},
+                {'meter': []}, {'edge': 'x'}, {'meters': 5}):
+        with open(path, 'w') as f:
+            json.dump(raw, f)
+        assert sb.load_config(path)['palette'] == 'default', raw
+    with open(path, 'w') as f:
+        json.dump({'palette': []}, f)
+    run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=b'{}', capture_output=True,
+                         env={**os.environ, 'SESSION_BAR_CONFIG': path})
+    assert run.returncode == 0 and not run.stderr, run
+    os.remove(path)
+    os.mkfifo(path)
+    signal.alarm(2)
+    try:
+        assert sb.load_config(path) == sb.load_config('/nonexistent'), 'a pipe for a layout reads as none'
+    finally:
+        signal.alarm(0)
 
 # the branch ahead of origin's (⇡), behind (⇣) or apart (⇅), told by the reflogs: the branch that once stood where
 # the other stands now is the one that moved on
@@ -621,6 +652,7 @@ with tempfile.TemporaryDirectory() as t:
     os.makedirs(os.path.join(t, '.claude'))
     open(os.path.join(t, '.claude', 'session-bar.json'), 'w').close()  # above home: never used
     assert web.layout_for(os.path.join(home, 'work'), user, home) == (user, 'user')
+    assert web.layout_for(home, user, home) == (user, 'user'), 'from home itself, the layout above home is not taken'
     layout = os.path.join(proj, '.claude', 'session-bar.json')
     with open(layout, 'w') as f:  # a hostile project layout: unknown elements, wrong types, past the 64 KiB cap
         f.write('{"rows": [["nope", 5]], "meter": "x"' + ' ' * 70_000 + '}')
@@ -737,8 +769,71 @@ with tempfile.TemporaryDirectory() as t:
     assert inst.write_settings(os.path.join(t, 'new.json'), old, '2026-10-20') is None
     diff = inst.settings_diff(old, {**old, 'statusLine': sl}, link)
     assert '+  "statusLine": {' in diff and not any(l[:1] in '+-' and 'theme' in l for l in diff.splitlines()), diff
+    # the diff never shows what an env block holds: the installer's output can land in a conversation
+    secret = {'theme': 'dark', 'env': {'ANTHROPIC_API_KEY': 'sk-ant-SECRET'}}
+    assert 'SECRET' not in inst.settings_diff(secret, {**secret, 'statusLine': sl}, link)
+    assert 'SECRET' not in inst.settings_diff({**secret, 'statusLine': sl}, secret, link)
 script = '/x/session-bar/session-bar.py'
 assert inst.is_ours(inst.status_line(inst.card_command(sys.executable, script)), script)
+
+# the page's server starts with the page's names only, whatever launcher started it (a .cmd has no env -i)
+import io
+
+seen = {}
+
+
+class Started:
+    stdout = io.BytesIO(b'opened http://127.0.0.1:1/\n')
+
+
+def popen(cmd, **kw):
+    seen.update(kw)
+    return Started()
+
+
+saved, os.environ['FAKE_SECRET'] = subprocess.Popen, 'k'
+subprocess.Popen = popen
+try:
+    assert web.detach(0) == 0
+finally:
+    subprocess.Popen = saved
+    del os.environ['FAKE_SECRET']
+assert 'FAKE_SECRET' not in seen['env'] and set(seen['env']) <= set(web.PAGE_ENV) and web.PAGE_ENV == inst.PAGE_ENV
+assert {'XAUTHORITY', 'XDG_CURRENT_DESKTOP'} <= set(web.PAGE_ENV), 'what a desktop browser needs under X11'
+
+# launchers for a home with Ș in its name, on Windows: the .cmd stays ASCII through %USERPROFILE%, a % is doubled;
+# Git Bash finds bash where Claude Code would
+with tempfile.TemporaryDirectory() as t:
+    home, saved = os.path.join(t, 'Ștefan'), os.environ['HOME']
+    os.environ['HOME'] = home
+    try:
+        paths = inst.write_launcher(os.path.join(home, '.local', 'bin'), os.path.join(home, 'Py', 'python.exe'),
+                                    os.path.join(home, '50%', 'configure.py'), True)
+    finally:
+        os.environ['HOME'] = saved
+    with open(paths[1], 'rb') as f:
+        cmd = f.read().decode('ascii')
+    assert '%USERPROFILE%' in cmd and '50%%' in cmd and 'Ștefan' not in cmd, cmd
+    with open(paths[0], encoding='utf-8') as f:
+        assert 'Ștefan' in f.read()
+    fake = os.path.join(t, 'bash.exe')
+    open(fake, 'w').close()
+    other = os.path.join(t, 'other.exe')
+    open(other, 'w').close()
+    assert inst.git_bash({'CLAUDE_CODE_GIT_BASH_PATH': fake}) == fake and inst.git_bash({'CLAUDE_CODE_GIT_BASH_PATH': other}) != other
+    # a session-bar of someone else's in ~/.local/bin is left alone
+    mine = os.path.join(t, '.local', 'bin', 'session-bar')
+    os.makedirs(os.path.dirname(mine))
+    with open(mine, 'w') as f:
+        f.write('echo mine\n')
+    run = subprocess.run([sys.executable, '-I', ispec.origin, '--yes'], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                         env={**os.environ, 'HOME': t, 'CLAUDE_CONFIG_DIR': os.path.join(t, 'c')})
+    with open(mine) as f:
+        assert run.returncode == 0 and f.read() == 'echo mine\n' and 'left as it is' in run.stdout, run
+    # a console that cannot print Ș (cp1252 in mintty, here ascii) costs a character, not the install
+    run = subprocess.run([sys.executable, '-X', 'utf8=0', ispec.origin, '--dry-run'], capture_output=True, stdin=subprocess.DEVNULL,
+                         env={**os.environ, 'HOME': home, 'CLAUDE_CONFIG_DIR': os.path.join(home, 'c'), 'PYTHONIOENCODING': 'ascii'})
+    assert run.returncode == 0, run
 assert not inst.is_ours({'type': 'command', 'command': 'npx ccstatusline'}, script) and not inst.is_ours(None, script)
 
 # installing and uninstalling, for the user and for a project: a layout is never lost, a settings file it cannot read

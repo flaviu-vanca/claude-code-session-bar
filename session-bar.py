@@ -252,7 +252,7 @@ def tail_of(path, n=65536):
 def git_dir(cwd):
     """The repository's top folder and its git folder, found up from `cwd`; (None, None) outside one."""
     d = cwd
-    while d and d != '/':
+    while d:
         dot = os.path.join(d, '.git')
         if os.path.exists(dot):
             try:
@@ -260,6 +260,8 @@ def git_dir(cwd):
             except OSError:
                 line = ''
             return d, os.path.join(d, line[8:]) if line.startswith('gitdir: ') else dot
+        if os.path.dirname(d) == d:  # the root: '/', 'C:\\', a UNC share
+            break
         d = os.path.dirname(d)
     return None, None
 
@@ -395,10 +397,11 @@ def load_config(path):
     """The card's settings from `path`: the edges' elements, the rows' elements, each in order, the meters' length
     and the palette. A setting missing, misspelt or of another type keeps its default; an unknown element is
     skipped, a repeated one kept once in its place."""
-    try:
-        with open(path, 'rb') as f:
-            data = f.read(MAX_CONFIG + 1)
-        raw = json.loads(data) if len(data) <= MAX_CONFIG else {}
+    try:  # O_NONBLOCK and fstat: a pipe or a device planted as a project's layout reads as none, never blocks
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(fd, 'rb') as f:
+            data = f.read(MAX_CONFIG + 1) if stat.S_ISREG(os.fstat(fd).st_mode) else b''
+        raw = json.loads(data) if 0 < len(data) <= MAX_CONFIG else {}
     except (OSError, ValueError):
         raw = {}
     raw = raw if isinstance(raw, dict) else {}
@@ -415,7 +418,8 @@ def load_config(path):
         cfg['rows'] = [keep(r, PLACES['rows']) for r in rows if isinstance(r, list)]
     m = raw.get('meter')
     cfg['meter'] = max(3, min(30, m)) if isinstance(m, int) and not isinstance(m, bool) else DEFAULT['meter']
-    cfg['palette'] = raw['palette'] if raw.get('palette') in PALETTES else DEFAULT['palette']
+    p = raw.get('palette')
+    cfg['palette'] = p if isinstance(p, str) and p in PALETTES else DEFAULT['palette']
     return cfg
 
 
