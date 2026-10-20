@@ -1,8 +1,10 @@
 # Claude Code Session Bar
 
-A status line for Claude Code, drawn as a card: the model, the cost and time, segmented meters for the context and the usage
-limits, the workspace and the machine, and the footer's states on its bottom edge. One Python script, standard
-library only, about 20 ms a run, no network. Nothing it shows reaches the model, so it costs no tokens.
+[![CI](https://github.com/flaviu-vanca/claude-code-session-bar/actions/workflows/ci.yml/badge.svg)](https://github.com/flaviu-vanca/claude-code-session-bar/actions/workflows/ci.yml)
+
+A status line for Claude Code, drawn as a card: the model, the cost and time, segmented meters for the context and
+the usage limits, the workspace and the machine, and the footer's states on its bottom edge. One Python script,
+standard library only, about 20 ms a run, no network. Nothing it shows reaches the model, so it costs no tokens.
 
 ```
 ╭─ ✻ Opus 5.5 · xhigh ────────────────────────────────────────────────── $73.50 · ◷ 6h42m ─╮
@@ -86,11 +88,16 @@ python3 install.py --uninstall --scope project     # a project's
 It removes the `statusLine` only while it still runs the installed card, then the code and the launcher. Layouts are
 kept, and named, so a reinstall picks them up.
 
-## Checking on a real Mac or Windows machine
+## Checking it on your machine
 
-The tests run on Linux and simulate the rest. On a real machine:
+```sh
+python3 check_install.py
+```
 
-1. `python3 install.py`; a new Claude Code session shows the card, every row the same width.
-2. In a project: `python3 install.py --scope project`; the card there follows the project's layout.
-3. `session-bar` from a terminal opens the page; a save shows on the card within a second.
-4. `python3 install.py --uninstall`; the card is gone and the layout is kept.
+It installs into a temporary home and runs the installed status line the way Claude Code would, through `sh`, or on
+Windows through Git Bash and PowerShell. It checks that no key planted in the environment reaches the card, opens the
+settings page through `session-bar`, and uninstalls. Nothing of yours is touched. CI runs it, with the unit tests, on
+Linux, macOS and Windows at every push.
+
+What only a person can check, in a real Claude Code session: the card's look, a save in the page showing on the card
+within a second, and a project's layout in that project.

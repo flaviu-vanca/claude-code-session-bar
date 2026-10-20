@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, python: '3.8' }
+          - { os: ubuntu-latest, python: '3.x' }
+          - { os: macos-latest, python: '3.x' }
+          - { os: windows-latest, python: '3.8' }
+          - { os: windows-latest, python: '3.x' }
+    steps:
+      # actions pinned to the commit of a release, not a tag anyone could move
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests (they lean on POSIX: fifos, signals, sh)
+        if: runner.os != 'Windows'
+        run: python -I test_session_bar.py
+      - name: Install and run it the way Claude Code does
+        run: python -I check_install.py
