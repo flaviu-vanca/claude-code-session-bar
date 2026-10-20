@@ -15,9 +15,15 @@ is Python 3 stdlib only, runs with `python3 -I -S`, and one run takes about 20 m
 | The settings in the browser, drag and drop | `python3 configure.py [port]`, in a terminal of its own: it serves the page on 127.0.0.1, opens it, and stops a few seconds after the page closes |
 | Tests (prints `ok`) | `python3 -I test_session_bar.py` |
 | Preview of the chips with sample states | `python3 -I preview/chips.py` |
+| Install for the user or a project, uninstall (README.md) | `python3 install.py [--scope user\|project] [--uninstall] [--dry-run] [--yes]` |
+| The settings page for the layout that applies here, detached | `session-bar` (installed in `~/.local/bin`), or `python3 configure.py --detach` |
 
 Live use: `statusLine.command` in `~/.claude/settings.json` points at `session-bar.py` in this folder, with
-`"padding": 0` and `"refreshInterval": 1`.
+`"padding": 0` and `"refreshInterval": 1`. `install.py` writes an `env -i` command instead (see README.md); this
+machine still runs the clone directly.
+
+The card takes the terminal's width from `COLUMNS`, which Claude Code sets at every run; until 2026-10-20 it walked
+the process tree to the terminal through `/proc`.
 
 ## The card
 
@@ -120,6 +126,32 @@ built for it.
 Done on 2026-10-19: adding elements at will, each with its own preview, is the settings page. Closed the same day: the
 language question. TS would have bought a typed payload, a web preview and npm; the web preview now exists in
 Python, and Python starts in 6.4 ms against Node's 26.5 ms (15-run medians, Node v24).
+
+## Facts from Claude Code 2.1.303's code (2026-10-20)
+
+- **The runner:** `executeStatusLineCommand` (`Pbr`) hands the command to the hook runner `$H`, always in shell
+  form; the `statusLine` schema has only `type`, `command`, `padding`, `refreshInterval`, `hideVimModeIndicator`.
+  `/bin/sh` on Linux and macOS; on Windows Git Bash when `mQ()` finds it (`CLAUDE_CODE_GIT_BASH_PATH`, then
+  `C:\Program Files\Git\bin\bash.exe`, `C:\Program Files (x86)\Git\bin\bash.exe`, then next to `git` on `PATH`),
+  else PowerShell.
+- **Its environment:** `os()`, that is `process.env` plus the settings' `env`, as it is unless
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` (or GitHub Actions) drops credential-like names; then `COLUMNS` and `LINES` from
+  Claude Code's stdout at every run, and `CLAUDE_PROJECT_DIR`.
+- **When it does not run:** `disableAllHooks` in managed settings; under `allowManagedHooksOnly` only the managed
+  `statusLine`; an untrusted workspace; cloud sessions.
+- **Settings layer** from low to high: user, project, local, flag, policy (`gn()`, `Ps`).
+- **A plugin's settings** apply only `agent` and `subagentStatusLine` (`yho`), never `statusLine`.
+- **Folders:** `CLAUDE_CONFIG_DIR` or `~/.claude`, `sessions` inside it (`Xte`); versions in
+  `(XDG_DATA_HOME or ~/.local/share)/claude/versions` on every system (`dje`, `Fin`); `~/.local/bin` is Claude Code's
+  own bin folder (`H5`).
+- **`!` (bash mode):** runs through the Bash or PowerShell tool with `dangerouslyDisableSandbox: true`; its output
+  enters the conversation as `<bash-stdout>`, and Claude answers after it unless `respondToBashCommands` is `false`
+  (default `true`).
+- **The idle hint** reads `CLAUDE_CODE_IDLE_TOKEN_THRESHOLD` and `CLAUDE_CODE_IDLE_THRESHOLD_MINUTES` from
+  `process.env` each time it decides, so a huge token threshold set where `claude` starts turns it off.
+- **Mods** can draw only AskUserQuestion, UserMessage, AssistantMessage, ToolUse, ToolResult, ToolGroup,
+  ToolProgress, CommandOutput, Spinner, TurnDuration, InfoNotice, SessionMode, PromptHint, AbovePrompt and Pane:
+  not the status line, not the footer's notifications.
 
 ## Facts from Claude Code 2.1.302's code
 
