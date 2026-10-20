@@ -647,4 +647,95 @@ with tempfile.TemporaryDirectory() as t:
 script = '/x/session-bar/session-bar.py'
 assert inst.is_ours(inst.status_line(inst.card_command(sys.executable, script)), script)
 assert not inst.is_ours({'type': 'command', 'command': 'npx ccstatusline'}, script) and not inst.is_ours(None, script)
+
+# installing and uninstalling, for the user and for a project: a layout is never lost, a settings file it cannot read
+# or a status line that is not its own is never overwritten unasked
+with tempfile.TemporaryDirectory() as t:
+    c, proj = os.path.join(t, 'c'), os.path.join(t, 'p')
+    os.makedirs(proj)
+    today = time.strftime('%Y-%m-%d')
+
+    def installer(*args, cfg=c):
+        return subprocess.run([sys.executable, '-I', ispec.origin, *args], capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, env={**os.environ, 'HOME': t, 'CLAUDE_CONFIG_DIR': cfg})
+
+    def settings(path=os.path.join(c, 'settings.json')):
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+
+    code, layout, launcher = os.path.join(c, 'session-bar'), os.path.join(c, 'session-bar', 'session-bar.json'), os.path.join(t, '.local', 'bin', 'session-bar')
+    run = installer('--scope', 'user', '--yes')
+    assert run.returncode == 0, run
+    assert all(os.path.isfile(os.path.join(code, n)) for n in inst.CODE) and sb.load_config(layout) == sb.load_config('/nonexistent')
+    card = os.path.join(code, 'session-bar.py')
+    line = settings()['statusLine']
+    assert inst.is_ours(line, card) and 'env -i' in line['command'], line
+    with open(launcher) as f:
+        assert os.access(launcher, os.X_OK) and inst.MARKER in f.read()
+    # the installed command draws the card, with no key in reach and every line the card's width
+    run = subprocess.run(['sh', '-c', line['command']], input=json.dumps(FULL).encode(), capture_output=True,
+                         env={**os.environ, 'HOME': t, 'CLAUDE_CONFIG_DIR': c, 'COLUMNS': '100', 'FAKE_SECRET': 'k'})
+    assert run.returncode == 0 and {len(ANSI.sub('', l)) for l in run.stdout.decode().splitlines()} == {96}, run
+    # a second install keeps an edited layout and backs the settings up
+    with open(layout, 'w') as f:
+        json.dump({'meter': 7}, f)
+    assert installer('--yes').returncode == 0 and sb.load_config(layout)['meter'] == 7
+    assert os.path.isfile(os.path.join(c, f'settings.json.bak-{today}-session-bar'))
+    # uninstall: the status line, the code and the launcher go; the layout stays, named
+    run = installer('--uninstall')
+    assert run.returncode == 0 and 'statusLine' not in settings() and layout in run.stdout, run
+    assert not any(os.path.exists(os.path.join(code, n)) for n in inst.CODE) and not os.path.exists(launcher)
+    assert os.path.isfile(layout)
+    # a status line the user changed is not theirs to remove
+    installer('--yes')
+    s = settings()
+    s['statusLine']['command'] = 'echo mine'
+    inst.write_settings(os.path.join(c, 'settings.json'), s, today)
+    run = installer('--uninstall')
+    assert run.returncode == 0 and settings()['statusLine']['command'] == 'echo mine' and 'left as it is' in run.stdout, run
+    # a settings file it cannot read, or a status line of another tool, is not overwritten unasked
+    with open(os.path.join(c, 'settings.json'), 'w') as f:
+        f.write('{oops')
+    run = installer('--yes')
+    with open(os.path.join(c, 'settings.json')) as f:
+        assert run.returncode == 1 and f.read() == '{oops', run
+    inst.write_settings(os.path.join(c, 'settings.json'), {'statusLine': {'type': 'command', 'command': 'npx ccstatusline'}}, today)
+    run = installer()
+    assert run.returncode == 1 and settings()['statusLine']['command'] == 'npx ccstatusline', run
+    assert installer('--yes').returncode == 0 and inst.is_ours(settings()['statusLine'], card)
+    backups = sorted(n for n in os.listdir(c) if n.startswith('settings.json.bak-'))
+    with open(os.path.join(c, backups[-1])) as f:
+        assert 'npx ccstatusline' in f.read(), backups
+    # a project: its layout for the team to commit, the command in the local settings, the code from the user's folder
+    fresh = os.path.join(t, 'c2')
+    run = installer('--scope', 'project', '--project', proj, '--yes', cfg=fresh)
+    assert run.returncode == 0, run
+    assert sb.load_config(os.path.join(proj, '.claude', 'session-bar.json')) == sb.load_config('/nonexistent')
+    local = settings(os.path.join(proj, '.claude', 'settings.local.json'))['statusLine']['command']
+    assert 'SESSION_BAR_CONFIG="$CLAUDE_PROJECT_DIR/' in local and os.path.isfile(os.path.join(fresh, 'session-bar', 'session-bar.py'))
+    assert not os.path.exists(os.path.join(fresh, 'settings.json'))
+    # a dry run shows the diff and writes nothing
+    dry = os.path.join(t, 'c3')
+    run = installer('--dry-run', cfg=dry)
+    assert run.returncode == 0 and '"statusLine"' in run.stdout and not os.path.exists(dry), run
+    # a symlink planted where the installer writes is never written through: the backup's name, a project's local
+    # settings leading out of the project (a cloned repository controls its .claude folder), a project's layout
+    s_path = os.path.join(c, 'settings.json')
+    os.symlink(os.path.join(t, 'victim'), os.path.join(c, f'settings.json.bak-{today}-session-bar-9'))
+    for n in range(2, 9):
+        open(os.path.join(c, f'settings.json.bak-{today}-session-bar-{n}'), 'w').close()
+    inst.write_settings(s_path, settings(), today)
+    assert not os.path.exists(os.path.join(t, 'victim')) and os.path.isfile(os.path.join(c, f'settings.json.bak-{today}-session-bar-10'))
+    evil = os.path.join(t, 'evil')
+    os.makedirs(os.path.join(evil, '.claude'))
+    with open(os.path.join(t, 'outside.json'), 'w') as f:
+        f.write('{}')
+    os.symlink(os.path.join(t, 'outside.json'), os.path.join(evil, '.claude', 'settings.local.json'))
+    run = installer('--scope', 'project', '--project', evil, '--yes')
+    with open(os.path.join(t, 'outside.json')) as f:
+        assert run.returncode == 1 and f.read() == '{}' and 'outside' in run.stdout, run
+    os.remove(os.path.join(evil, '.claude', 'settings.local.json'))
+    os.symlink(os.path.join(t, 'victim2'), os.path.join(evil, '.claude', 'session-bar.json'))
+    run = installer('--scope', 'project', '--project', evil, '--yes')
+    assert run.returncode == 1 and not os.path.exists(os.path.join(t, 'victim2')), run
 print('ok')
