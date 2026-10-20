@@ -103,6 +103,7 @@ FOOTER_PADDING = 2  # columns Claude Code's footer row keeps on each side of the
 RC_PILL = len(' /rc')  # Claude Code's /rc pill and the gap before it (columnGap 1), shown from 60 columns (Tbn)
 NOTICE = len('✔ Update installed · Restart to update')  # Claude Code's widest notice; its idle /clear hint is as wide
 CONFIG = os.environ.get('SESSION_BAR_CONFIG') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'session-bar.json')
+MAX_CONFIG = 64 * 1024  # a larger layout is not read: it would cost every run
 # what each place can hold: text on the top edge, anything but chips on a row, chips on the bottom edge
 TEXT = ['model', 'effort', 'thinking', 'style', 'agent', 'name', 'version', 'cost', 'time', 'api', 'lines', 'clock',
         'repo', 'cwd', 'session', 'worktree', 'dirs', 'mem', 'disks', 'load', 'battery']
@@ -132,7 +133,10 @@ CONTROL = re.compile(r'[\x00-\x1f\x7f-\x9f]')  # C0 and C1 controls: a name from
 
 # A piece of a row: its text, its look and an optional link. Every glyph used is one cell wide.
 def P(t, rgb=None, dim=False, bold=False, link=None):
-    return (CONTROL.sub('', t), rgb, dim, bold, link and CONTROL.sub('', link))
+    link = link and CONTROL.sub('', link)
+    if link and not link.startswith('https://'):  # a file:// or ssh:// link would open on a click
+        link = None
+    return (CONTROL.sub('', t), rgb, dim, bold, link)
 
 
 def cells(row):
@@ -392,8 +396,9 @@ def load_config(path):
     and the palette. A setting missing, misspelt or of another type keeps its default; an unknown element is
     skipped, a repeated one kept once in its place."""
     try:
-        with open(path) as f:
-            raw = json.load(f)
+        with open(path, 'rb') as f:
+            data = f.read(MAX_CONFIG + 1)
+        raw = json.loads(data) if len(data) <= MAX_CONFIG else {}
     except (OSError, ValueError):
         raw = {}
     raw = raw if isinstance(raw, dict) else {}
@@ -795,7 +800,7 @@ def meter_arg(argv):
 
 def main():
     try:
-        d = json.loads(sys.stdin.read() or '{}')
+        d = json.loads(sys.stdin.read() or '{}', parse_constant=lambda c: None)  # NaN, Infinity: not JSON, not numbers
     except ValueError:
         d = {}
     ws = d.get('workspace') or {}

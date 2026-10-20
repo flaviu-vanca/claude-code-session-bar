@@ -196,6 +196,37 @@ with tempfile.TemporaryDirectory() as t:
     with open(head, 'w') as f:
         f.write('ref: refs/heads/' + 'b' * 100_000)
     assert 0 < len(sb.git_info(t)[1]) <= 256, 'only the start of HEAD is read'
+    os.remove(head)
+    os.symlink('/dev/zero', head)
+    signal.alarm(2)
+    try:
+        assert sb.git_info(t) == (os.path.basename(t), ''), 'a symlink to a device reads as nothing'
+    finally:
+        signal.alarm(0)
+    os.remove(head)
+    with open(head, 'w') as f:
+        f.write('ref: refs/heads/main\n')
+    with open(os.path.join(t, '.git', 'packed-refs'), 'w') as f:
+        f.write(('0' * 40 + ' refs/tags/x\n') * 40_000)  # 2 MB
+    assert sb.git_sync(t, 'main') in (None, '⇡', '⇣', '⇅'), 'a huge packed-refs is read only in part'
+
+# links are https only: a file://, javascript: or ssh:// link would open on a click
+assert sb.P('x', link='file:///etc/passwd')[4] is None and sb.P('x', link='javascript:x')[4] is None
+assert sb.P('x', link='ssh://h/x')[4] is None and sb.P('x', link='https://github.com/o/r')[4] == 'https://github.com/o/r'
+
+# session files of another shape are skipped
+with tempfile.TemporaryDirectory() as t:
+    for i, raw in enumerate([b'[]', b'null', b'{"pid": "x", "sessionId": "s"}', b'\xff\xfe']):
+        with open(os.path.join(t, f'{i + 1}.json'), 'wb') as f:
+            f.write(raw)
+    assert sb.session_record('s', t) == {}
+
+# a layout over 64 KiB is not read: it would cost every run
+with tempfile.TemporaryDirectory() as t:
+    path = os.path.join(t, 'big.json')
+    with open(path, 'w') as f:
+        f.write('{"meter": 7' + ' ' * 70_000 + '}')
+    assert sb.load_config(path) == sb.load_config('/nonexistent') and sb.MAX_CONFIG == 64 * 1024
 
 # the branch ahead of origin's (⇡), behind (⇣) or apart (⇅), told by the reflogs: the branch that once stood where
 # the other stands now is the one that moved on
@@ -375,6 +406,15 @@ bad = json.dumps({**FULL, 'prompt_cache': 'x', 'pr': 'x', 'vim': 'x', 'version':
 env = {**os.environ, 'SESSION_BAR_CONFIG': '/nonexistent/session-bar.json'}
 run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=bad.encode(), capture_output=True, env=env)
 assert run.returncode == 0 and run.stdout.decode().count('\n') == 4 and not run.stderr, run
+odd = json.dumps({**FULL, 'context_window': {**FULL['context_window'], 'used_percentage': float('nan')},
+                  'rate_limits': {'five_hour': {'used_percentage': float('inf'), 'resets_at': NOW}},
+                  'prompt_cache': {'hit_ratio': float('inf')}})  # NaN and Infinity, not JSON
+with tempfile.TemporaryDirectory() as t:
+    with open(os.path.join(t, 'c.json'), 'w') as f:
+        json.dump({'rows': [['ctx', '5h', 'week', 'hits']]}, f)
+    run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=odd.encode(), capture_output=True,
+                         env={**env, 'SESSION_BAR_CONFIG': os.path.join(t, 'c.json')})
+    assert run.returncode == 0 and run.stdout.decode().count('\n') == 3 and not run.stderr, run
 with tempfile.TemporaryDirectory() as t:  # an empty home: no session file, no newer version, no notice
     for cols, width in (('100', 96), ('x', 116)):
         run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(),
