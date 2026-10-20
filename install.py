@@ -43,17 +43,22 @@ class SettingsError(Exception):
     """A settings file that cannot be read, or holds something other than a JSON object."""
 
 
-def sh_word(path):
-    """`path` as one single-quoted sh word, with forward slashes (Git Bash drops unquoted backslashes)."""
-    return "'" + path.replace('\\', '/').replace("'", "'\\''") + "'"
+def sh_word(path, windows=os.name == 'nt'):
+    """`path` as one single-quoted sh word; on Windows with forward slashes (Git Bash drops unquoted backslashes),
+    elsewhere as it is, where a backslash is a character of the name."""
+    return "'" + (path.replace('\\', '/') if windows else path).replace("'", "'\\''") + "'"
 
 
 def ps_word(path):
-    """`path` as one single-quoted PowerShell string, with forward slashes."""
-    return "'" + path.replace('\\', '/').replace("'", "''") + "'"
+    """`path` as one single-quoted PowerShell string, with forward slashes; PowerShell reads the curly quotes ‘ ’ ‚ ‛
+    as ', so each is doubled too."""
+    path = path.replace('\\', '/')
+    for q in "'‘’‚‛":
+        path = path.replace(q, q * 2)
+    return "'" + path + "'"
 
 
-def card_command(python, script, project=False, shell='sh'):
+def card_command(python, script, project=False, shell='sh', windows=os.name == 'nt'):
     """The statusLine command: `script` under `python`. In sh (Linux, macOS, Git Bash) it starts under env -i with
     CARD_ENV only; PowerShell has no env -i, so there the card gets Claude Code's whole environment."""
     if shell == 'powershell':
@@ -61,7 +66,7 @@ def card_command(python, script, project=False, shell='sh'):
         return f'{layout}& {ps_word(python)} -I -S {ps_word(script)}'
     names = ' '.join(f'{n}="${n}"' for n in CARD_ENV)
     layout = f' SESSION_BAR_CONFIG="{PROJECT_LAYOUT}"' if project else ''
-    return f'env -i {names}{layout} {sh_word(python)} -I -S {sh_word(script)}'
+    return f'env -i {names}{layout} {sh_word(python, windows)} -I -S {sh_word(script, windows)}'
 
 
 def status_line(command):
@@ -158,7 +163,7 @@ def write_launcher(bin_dir, python, configure, windows):
     os.makedirs(bin_dir, exist_ok=True)
     names = ' '.join(f'{n}="${n}"' for n in PAGE_ENV)
     sh, cmd = os.path.join(bin_dir, 'session-bar'), os.path.join(bin_dir, 'session-bar.cmd')
-    files = [(sh, '\n', f'#!/bin/sh\n# {MARKER}\nexec env -i {names} {sh_word(python)} -I -S {sh_word(configure)} --detach "$@"\n')]
+    files = [(sh, '\n', f'#!/bin/sh\n# {MARKER}\nexec env -i {names} {sh_word(python, windows)} -I -S {sh_word(configure, windows)} --detach "$@"\n')]
     if windows:
         files.append((cmd, '\r\n', f'@echo off\nrem {MARKER}\n"{cmd_path(python)}" -I -S "{cmd_path(configure)}" --detach %*\n'))
     paths = []
@@ -191,6 +196,18 @@ def cmd_path(path):
     return path
 
 
+def rewrite_note(path, old):
+    """The diff compares the settings as Claude Code lays them out; a file laid out otherwise is rewritten whole."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+    except (OSError, ValueError):
+        return
+    if text != dump(old):
+        print(f'{path} is not in Claude Code\'s own layout (2-space indent): it is rewritten whole in that layout; the '
+              'backup keeps it as it was.')
+
+
 def saved(backup):
     if backup:
         print(f'Backed up the old file to {backup}')
@@ -203,15 +220,57 @@ def load_card():
     return card
 
 
-def uninstall(args, old, path, code, script, bin_dir, layouts, backups):
+def projects(code, update=None):
+    """The projects installed with --scope project, whose status line runs the code in `code`; with `update`, a
+    function from that list to a new one, written back whole."""
+    path = os.path.join(code, 'projects.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            have = [p for p in json.load(f) if isinstance(p, str)]
+    except (OSError, ValueError, TypeError):
+        have = []
+    if update is None:
+        return have
+    os.makedirs(code, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=code, prefix='.projects-', suffix='.tmp')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(dump(list(dict.fromkeys(update(have)))))
+    os.replace(tmp, path)
+    return update(have)
+
+
+def still_running(code, script):
+    """The recorded projects whose local status line still runs the installed card."""
+    running = []
+    for project in projects(code):
+        try:
+            line = read_settings(os.path.join(project, '.claude', 'settings.local.json')).get('statusLine')
+        except SettingsError:
+            continue
+        if is_ours(line, script):
+            running.append(project)
+    return running
+
+
+def uninstall(args, old, path, code, script, bin_dir, layouts, backups, root=None):
+    if args.scope == 'user' and not args.yes:
+        running = still_running(code, script)
+        if running:
+            print('These projects still run this code from their status line:\n'
+                  + ''.join(f'  {shown(p)}\n' for p in running)
+                  + 'Uninstall them first (--scope project --project PATH), or pass --yes to go ahead.')
+            return 1
     current = old.get('statusLine')
     if is_ours(current, script):
         new = {k: v for k, v in old.items() if k != 'statusLine'}
+        rewrite_note(path, old)
         print(shown(settings_diff(old, new, path)), end='')
         if not args.dry_run:
             saved(write_settings(path, new, time.strftime('%Y-%m-%d'), backups))
     elif current is not None:
         print(f'The statusLine in {path} does not run the installed card; left as it is.')
+    if root and not args.dry_run:
+        projects(code, lambda have: [p for p in have if p != root])
     if args.scope == 'user' and not args.dry_run:
         for name in CODE:
             if os.path.isfile(os.path.join(code, name)):
@@ -239,8 +298,10 @@ def main(argv=None):
     code = os.path.join(claude, 'session-bar')
     script, user_layout = os.path.join(code, 'session-bar.py'), os.path.join(code, 'session-bar.json')
     bin_dir = os.path.join(os.path.expanduser('~'), '.local', 'bin')  # Claude Code's own bin folder (H5 in 2.1.303)
+    root = None  # the project's real path, at project scope
     if args.scope == 'user':
-        path, layout, backups = os.path.join(claude, 'settings.json'), user_layout, None
+        # backups out of the settings' folder: settings.json can be a symlink into a dotfiles repository
+        path, layout, backups = os.path.join(claude, 'settings.json'), user_layout, os.path.join(code, 'backups', 'user')
     else:
         project = os.path.abspath(args.project)
         path = os.path.join(project, '.claude', 'settings.local.json')
@@ -260,7 +321,7 @@ def main(argv=None):
         print(e)
         return 1
     if args.uninstall:
-        return uninstall(args, old, path, code, script, bin_dir, [user_layout, layout], backups)
+        return uninstall(args, old, path, code, script, bin_dir, [user_layout, layout], backups, root)
 
     current = old.get('statusLine')
     if current is not None and not is_ours(current, script) and not args.yes:
@@ -275,6 +336,7 @@ def main(argv=None):
         print('Git Bash was not found, so Claude Code runs the status line through PowerShell, which has no env -i: '
               "the card receives Claude Code's whole environment, keys included.")
     new = {**old, 'statusLine': status_line(card_command(sys.executable, script, args.scope == 'project', shell))}
+    rewrite_note(path, old)
     print(shown(settings_diff(old, new, path)), end='')
     if args.dry_run:
         print('Dry run: nothing was written.')
@@ -298,6 +360,8 @@ def main(argv=None):
         print(f'Wrote the layout {target}')
     saved(write_settings(path, new, time.strftime('%Y-%m-%d'), backups))
     print(f'Wrote {path}')
+    if root:  # so the user's uninstall knows this project still runs the code
+        projects(code, lambda have: have + [root])
     return 0
 
 

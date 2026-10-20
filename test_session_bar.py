@@ -799,7 +799,10 @@ with tempfile.TemporaryDirectory() as t:
         assert 'FAKE_SECRET' not in seen and 'ANTHROPIC_API_KEY' not in seen and seen['COLUMNS'] == '90', seen
         assert set(seen) - {'LC_CTYPE', 'SESSION_BAR_CONFIG'} <= set(inst.CARD_ENV), set(seen)  # PEP 538 may add LC_CTYPE
         assert seen.get('SESSION_BAR_CONFIG') == ('/p/.claude/session-bar.json' if project else None), seen
-assert "'C:/Py/python.exe'" in inst.card_command('C:\\Py\\python.exe', 'C:\\x\\s.py')
+assert "'C:/Py/python.exe'" in inst.card_command('C:\\Py\\python.exe', 'C:\\x\\s.py', windows=True)
+# backslashes become / only for Windows (Git Bash drops them); on POSIX a backslash is a character of the name
+assert inst.sh_word('/a\\b', windows=False) == "'/a\\b'" and inst.sh_word('C:\\Py', windows=True) == "'C:/Py'"
+assert inst.ps_word("C:/o’neil/‘x’") == "'C:/o’’neil/‘‘x’’'", inst.ps_word("C:/o’neil/‘x’")  # PowerShell reads ‘ ’ as '
 ps = inst.card_command('C:/Py/python.exe', 'C:/x/s.py', project=True, shell='powershell')
 assert 'env -i' not in ps and ps.startswith('$env:SESSION_BAR_CONFIG') and "& 'C:/Py/python.exe'" in ps, ps
 
@@ -944,7 +947,9 @@ with tempfile.TemporaryDirectory() as t:
     with open(layout, 'w') as f:
         json.dump({'meter': 7}, f)
     assert installer('--yes').returncode == 0 and sb.load_config(layout)['meter'] == 7
-    assert os.path.isfile(os.path.join(c, f'settings.json.bak-{today}-session-bar'))
+    user_backups = os.path.join(c, 'session-bar', 'backups', 'user')  # not beside a symlink's target: a dotfiles repo
+    assert os.path.isfile(os.path.join(user_backups, f'settings.json.bak-{today}-session-bar')), os.listdir(c)
+    assert not [n for n in os.listdir(c) if '.bak-' in n], os.listdir(c)
     # uninstall: the status line, the code and the launcher go; the layout stays, named
     run = installer('--uninstall')
     assert run.returncode == 0 and 'statusLine' not in settings() and layout in run.stdout, run
@@ -967,8 +972,9 @@ with tempfile.TemporaryDirectory() as t:
     run = installer()
     assert run.returncode == 1 and settings()['statusLine']['command'] == 'npx ccstatusline', run
     assert installer('--yes').returncode == 0 and inst.is_ours(settings()['statusLine'], card)
-    backups = sorted(n for n in os.listdir(c) if n.startswith('settings.json.bak-'))
-    with open(os.path.join(c, backups[-1])) as f:
+    backups = sorted((n for n in os.listdir(user_backups) if n.startswith('settings.json.bak-')),
+                     key=lambda n: int(n.rsplit('-', 1)[1]) if n.rsplit('-', 1)[1].isdigit() else 1)
+    with open(os.path.join(user_backups, backups[-1])) as f:
         assert 'npx ccstatusline' in f.read(), backups
     # a project: its layout for the team to commit, the command in the local settings, the code from the user's folder
     fresh = os.path.join(t, 'c2')
@@ -978,6 +984,20 @@ with tempfile.TemporaryDirectory() as t:
     local = settings(os.path.join(proj, '.claude', 'settings.local.json'))['statusLine']['command']
     assert 'SESSION_BAR_CONFIG="$CLAUDE_PROJECT_DIR/' in local and os.path.isfile(os.path.join(fresh, 'session-bar', 'session-bar.py'))
     assert not os.path.exists(os.path.join(fresh, 'settings.json'))
+    # the user's uninstall would take the code a project's status line still runs: it says so and stops, unless --yes
+    run = installer('--uninstall', cfg=fresh)
+    assert run.returncode == 1 and proj in run.stdout and os.path.isfile(os.path.join(fresh, 'session-bar', 'session-bar.py')), run
+    assert installer('--uninstall', '--scope', 'project', '--project', proj, cfg=fresh).returncode == 0
+    run = installer('--uninstall', cfg=fresh)
+    assert run.returncode == 0 and not os.path.exists(os.path.join(fresh, 'session-bar', 'session-bar.py')), run
+    # a settings file not in Claude Code's own layout is rewritten whole, and the installer says so
+    loose_cfg = os.path.join(t, 'c4')
+    os.makedirs(loose_cfg)
+    with open(os.path.join(loose_cfg, 'settings.json'), 'w') as f:
+        f.write(json.dumps({'theme': 'dark'}, indent=4) + '\n')
+    assert 'rewritten whole' in installer('--dry-run', cfg=loose_cfg).stdout
+    inst.write_settings(os.path.join(loose_cfg, 'settings.json'), {'theme': 'dark'}, today)
+    assert 'rewritten whole' not in installer('--dry-run', cfg=loose_cfg).stdout
     # a dry run shows the diff and writes nothing
     dry = os.path.join(t, 'c3')
     run = installer('--dry-run', cfg=dry)
@@ -1012,6 +1032,7 @@ with tempfile.TemporaryDirectory() as t:
         run = installer('--scope', 'project', '--project', hostile, *args)
         assert not set(run.stdout) & {'\x1b', '\x07', '\x9b'}, repr(run.stdout)
     assert not [n for n in os.listdir(os.path.join(hostile, '.claude')) if '.bak-' in n], os.listdir(os.path.join(hostile, '.claude'))
-    kept = [os.path.join(r, n) for r, _, ns in os.walk(os.path.join(c, 'session-bar', 'backups')) for n in ns]
+    kept = [os.path.join(r, n) for r, _, ns in os.walk(os.path.join(c, 'session-bar', 'backups')) for n in ns
+            if os.path.basename(r).startswith('hostile-')]
     assert len(kept) == 1 and kept[0] in run.stdout and 'pwned' in open(kept[0], encoding='utf-8').read(), (kept, run.stdout)
 print('ok')
