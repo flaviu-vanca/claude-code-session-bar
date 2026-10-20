@@ -158,7 +158,7 @@ Python, and Python starts in 6.4 ms against Node's 26.5 ms (15-run medians, Node
 ## Learned on real machines (CI, 2026-10-20)
 
 `check_install.py` and the unit tests run at every push on Ubuntu (Python 3.8, latest), macOS (latest) and Windows
-(3.8, latest); all green since `ad27b0a`'s successors. What the runs taught:
+(3.8, latest); all green from `bdbebea` on. What the runs taught:
 - **Windows:** Git Bash's `env -i` hands `SYSTEMROOT` and `USERPROFILE` on to a native `python.exe`, and the card
   draws through it; through PowerShell (`-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command`), `& python`
   gets the payload on stdin. `session-bar.cmd` and the sh launcher in Git Bash both open the page. A folder that is a
