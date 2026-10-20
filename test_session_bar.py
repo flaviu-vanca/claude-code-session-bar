@@ -577,4 +577,74 @@ with tempfile.TemporaryDirectory() as t:
     assert sb.load_config(web.SAVE) == c
     srv.shutdown()
     srv.server_close()
+
+# the installer (install.py): the status line command starts Python with an empty environment and a short list, so
+# no key Claude Code was started with reaches the card; paths with a space or a quote still run
+import stat
+
+ispec = importlib.util.spec_from_file_location('install', os.path.join(os.path.dirname(spec.origin), 'install.py'))
+inst = importlib.util.module_from_spec(ispec)
+ispec.loader.exec_module(inst)
+with tempfile.TemporaryDirectory() as t:
+    folder = os.path.join(t, "a b'c")
+    os.mkdir(folder)
+    stub = os.path.join(folder, 'stub.py')
+    with open(stub, 'w') as f:
+        f.write('import json, os, sys; json.dump(dict(os.environ), sys.stdout)')
+    outer = {**os.environ, 'FAKE_SECRET': 'k', 'ANTHROPIC_API_KEY': 'k', 'COLUMNS': '90', 'CLAUDE_PROJECT_DIR': '/p'}
+    for project in (False, True):
+        run = subprocess.run(['sh', '-c', inst.card_command(sys.executable, stub, project)], capture_output=True, env=outer)
+        seen = json.loads(run.stdout)
+        assert 'FAKE_SECRET' not in seen and 'ANTHROPIC_API_KEY' not in seen and seen['COLUMNS'] == '90', seen
+        assert set(seen) - {'LC_CTYPE', 'SESSION_BAR_CONFIG'} <= set(inst.CARD_ENV), set(seen)  # PEP 538 may add LC_CTYPE
+        assert seen.get('SESSION_BAR_CONFIG') == ('/p/.claude/session-bar.json' if project else None), seen
+assert "'C:/Py/python.exe'" in inst.card_command('C:\\Py\\python.exe', 'C:\\x\\s.py')
+ps = inst.card_command('C:/Py/python.exe', 'C:/x/s.py', project=True, shell='powershell')
+assert 'env -i' not in ps and ps.startswith('$env:SESSION_BAR_CONFIG') and "& 'C:/Py/python.exe'" in ps, ps
+
+# the settings file: never written when it cannot be read; written whole, through its symlink, keeping its mode and
+# its non-ASCII text, after a backup of the old bytes
+with tempfile.TemporaryDirectory() as t:
+    assert inst.read_settings(os.path.join(t, 'none.json')) == {}
+    bad = os.path.join(t, 'bad.json')
+    for text in ('{oops', '[]'):
+        with open(bad, 'w') as f:
+            f.write(text)
+        try:
+            inst.read_settings(bad)
+            raise AssertionError(text)
+        except inst.SettingsError:
+            pass
+    if os.geteuid() != 0:
+        os.chmod(bad, 0)
+        try:
+            inst.read_settings(bad)
+            raise AssertionError('unreadable')
+        except inst.SettingsError:
+            pass
+    old = {'name': 'Ștefan', 'theme': 'dark', 'permissions': {'allow': ['Bash(ls)']}}
+    real, link = os.path.join(t, 'real.json'), os.path.join(t, 'settings.json')
+    with open(real, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(old, indent=2) + '\n')  # as Claude Code writes it
+    os.chmod(real, 0o600)
+    os.symlink(real, link)
+    with open(real, 'rb') as f:
+        before = f.read()
+    sl = inst.status_line('x')
+    assert sl == {'type': 'command', 'command': 'x', 'padding': 0, 'refreshInterval': 1}
+    backup = inst.write_settings(link, {**old, 'statusLine': sl}, '2026-10-20')
+    with open(real, encoding='utf-8') as f:
+        text = f.read()
+    assert os.path.islink(link) and json.loads(text) == {**old, 'statusLine': sl} and 'Ștefan' in text
+    assert stat.S_IMODE(os.stat(real).st_mode) == 0o600 and sorted(os.listdir(t)) == sorted(
+        ['bad.json', 'real.json', 'settings.json', 'real.json.bak-2026-10-20-session-bar']), os.listdir(t)
+    with open(backup, 'rb') as f:
+        assert backup == real + '.bak-2026-10-20-session-bar' and f.read() == before
+    assert inst.write_settings(link, old, '2026-10-20') == real + '.bak-2026-10-20-session-bar-2'
+    assert inst.write_settings(os.path.join(t, 'new.json'), old, '2026-10-20') is None
+    diff = inst.settings_diff(old, {**old, 'statusLine': sl}, link)
+    assert '+  "statusLine": {' in diff and not any(l[:1] in '+-' and 'theme' in l for l in diff.splitlines()), diff
+script = '/x/session-bar/session-bar.py'
+assert inst.is_ours(inst.status_line(inst.card_command(sys.executable, script)), script)
+assert not inst.is_ours({'type': 'command', 'command': 'npx ccstatusline'}, script) and not inst.is_ours(None, script)
 print('ok')
