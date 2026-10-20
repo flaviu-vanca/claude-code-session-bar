@@ -889,6 +889,7 @@ assert 'env -i' not in ps and ps.startswith('$env:SESSION_BAR_CONFIG') and "& 'C
 # the settings file: never written when it cannot be read; written whole, through its symlink, keeping its mode and
 # its non-ASCII text, after a backup of the old bytes
 with tempfile.TemporaryDirectory() as t:
+    t = os.path.realpath(t)  # macOS: /var is /private/var, and write_settings follows links to the real file
     assert inst.read_settings(os.path.join(t, 'none.json')) == {}
     bad = os.path.join(t, 'bad.json')
     for text in ('{oops', '[]'):
