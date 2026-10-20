@@ -149,6 +149,12 @@ import json
 import tempfile
 import time
 
+# Claude Code's folder moves with CLAUDE_CONFIG_DIR, its downloads with XDG_DATA_HOME; empty means unset
+home = os.path.expanduser('~')
+assert sb.claude_dir({'CLAUDE_CONFIG_DIR': '/c'}) == '/c' and sb.claude_dir({'CLAUDE_CONFIG_DIR': ''}) == os.path.join(home, '.claude')
+assert sb.versions_dir({'XDG_DATA_HOME': '/d'}) == os.path.join('/d', 'claude', 'versions')
+assert sb.versions_dir({}) == os.path.join(home, '.local', 'share', 'claude', 'versions')
+
 # names from disk or the payload cannot drive the terminal, and a hostile .git cannot stall the card
 import signal
 
@@ -386,6 +392,18 @@ with tempfile.TemporaryDirectory() as t:
     assert off - beside == (39 if off >= 119 else 0), (off, beside)
     os.makedirs(os.path.join(t, '.local', 'share', 'claude', 'versions', '9.9.9'))
     assert first_line_width({}, {**FULL, 'version': '2.1.302'}) == beside, 'an update installed makes the same room'
+
+# the script finds the session file and the downloads where CLAUDE_CONFIG_DIR and XDG_DATA_HOME put them
+with tempfile.TemporaryDirectory() as t:
+    cfg_dir, data = os.path.join(t, 'cfg'), os.path.join(t, 'data')
+    os.makedirs(os.path.join(cfg_dir, 'sessions'))
+    with open(os.path.join(cfg_dir, 'sessions', f'{os.getpid()}.json'), 'w') as f:
+        json.dump({'sessionId': FULL['session_id'], 'pid': os.getpid(), 'bridgeSessionId': 'session_01X'}, f)
+    os.makedirs(os.path.join(data, 'claude', 'versions', '9.9.9'))
+    run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps({**FULL, 'version': '2.1.302'}).encode(),
+                         capture_output=True, env={**env, 'HOME': t, 'COLUMNS': '188', 'CLAUDE_CONFIG_DIR': cfg_dir, 'XDG_DATA_HOME': data})
+    bottom = ANSI.sub('', run.stdout.decode().splitlines()[-1])
+    assert '⇄ rc' in bottom and '↑ 9.9.9' in bottom, bottom
 
 # who spoke last in a transcript, read from its tail: Claude Code writes a message once it is whole, so while the user
 # or a tool's result spoke last, Claude is at work on its next step; other entries and side chains do not count

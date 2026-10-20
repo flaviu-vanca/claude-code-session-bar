@@ -305,7 +305,18 @@ def git_sync(cwd, branch):
     return '⇡' if ahead and not behind else '⇣' if behind and not ahead else '⇅'
 
 
-def host(project):
+def claude_dir(env):
+    """Claude Code's folder: CLAUDE_CONFIG_DIR, else ~/.claude (read in 2.1.303)."""
+    return env.get('CLAUDE_CONFIG_DIR') or os.path.join(os.path.expanduser('~'), '.claude')
+
+
+def versions_dir(env):
+    """Where Claude Code downloads its versions, on every system: (XDG_DATA_HOME or ~/.local/share)/claude/versions."""
+    return os.path.join(env.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share'),
+                        'claude', 'versions')
+
+
+def host(project, env=os.environ):
     info = {'disks': [], 'sandbox': False}
     try:
         mem = {}
@@ -329,7 +340,8 @@ def host(project):
         pass
     info['battery'] = battery()
     # the sandbox setting as Claude Code layers it: the user's, the project's, the project's local one
-    for path in ('~/.claude/settings.json', f'{project}/.claude/settings.json', f'{project}/.claude/settings.local.json'):
+    for path in (os.path.join(claude_dir(env), 'settings.json'), f'{project}/.claude/settings.json',
+                 f'{project}/.claude/settings.local.json'):
         try:
             with open(os.path.expanduser(path)) as f:
                 enabled = (json.load(f).get('sandbox') or {}).get('enabled')
@@ -739,20 +751,20 @@ def main():
         d = {}
     ws = d.get('workspace') or {}
     project = ws.get('project_dir') or ws.get('current_dir') or d.get('cwd') or os.getcwd()
-    h, now, home = host(project), time.time(), os.path.expanduser('~')
+    h, now = host(project), time.time()
     cfg = load_config(CONFIG)
     use_palette(cfg['palette'])
     rc, notices = None, False  # Remote Control's session, while it is on; whether a notice sits beside the card
     try:
-        rec = session_record(d.get('session_id'), os.path.join(home, '.claude', 'sessions'))
+        rec = session_record(d.get('session_id'), os.path.join(claude_dir(os.environ), 'sessions'))
         edge = cfg['edge']
         rc = rec.get('bridgeSessionId')
         env = os.environ  # Claude Code hands its own environment to the command; only named variables are read
         s = {'rc': rc, 'busy': rec.get('status') == 'busy', 'sandbox': h.get('sandbox'),
-             'newest': newest_version(os.path.join(home, '.local', 'share', 'claude', 'versions')),
+             'newest': newest_version(versions_dir(os.environ)),
              'no_transcript': env_flag(env, 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'),
              'mode': last_permission_mode(d.get('transcript_path')) if 'mode' in edge else None,
-             'drafts': count_json(os.path.join(home, '.claude', 'feedback', 'drafts')) if 'drafts' in edge else 0}
+             'drafts': count_json(os.path.join(claude_dir(os.environ), 'feedback', 'drafts')) if 'drafts' in edge else 0}
         notices = update_ready(s['newest'], d.get('version')) or idle_hint(rec, d, env, now)
         if 'thinking' in cfg['top_left'] + cfg['top_right'] + [n for r in cfg['rows'] for n in r]:
             h['thinking'] = s['busy'] and last_speaker(d.get('transcript_path')) == 'user'
