@@ -114,7 +114,10 @@ def write_settings(path, data, stamp, backup_dir=None):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(dump(data))
-        os.chmod(tmp, mode)
+            if hasattr(os, 'fchmod'):  # on the open file, not by name: no symlink can be slipped in between
+                os.fchmod(f.fileno(), mode)
+            else:
+                os.chmod(tmp, mode)
         os.replace(tmp, real)
     except BaseException:
         os.unlink(tmp)

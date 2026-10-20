@@ -104,13 +104,22 @@ STATES = {'rc': 'session_01X', 'busy': True, 'newest': '2.1.303', 'no_transcript
 
 def save(cfg, path):
     """Writes the settings whole: a temporary file renamed over the old, so the card never reads half of one. The
-    temporary file gets a fresh name (mkstemp), so one planted in a project's .claude is never written through."""
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or '.', prefix='.session-bar-', suffix='.tmp')
+    temporary file gets a fresh name (mkstemp), so one planted in a project's .claude is never written through, and
+    the folder is checked again now: one swapped for a symlink since the page opened is refused.
+    shortcut: a check, then a write; a writer racing in between needs write access to the project folder already,
+    upgrade to dir_fd writes if that ever matters."""
+    folder = os.path.dirname(path) or '.'
+    if not mine(folder, stat.S_ISDIR) or (os.path.lexists(path) and not mine(path, stat.S_ISREG)):
+        raise ValueError(f'{path} is not a layout of this user\'s in a folder of their own; not saved')
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix='.session-bar-', suffix='.tmp')
     try:
         with os.fdopen(fd, 'w') as f:
             json.dump({k: cfg[k] for k in sb.DEFAULT}, f, indent=2)
             f.write('\n')
-        os.chmod(tmp, 0o644)
+            if hasattr(os, 'fchmod'):  # on the open file, not by name: no symlink can be slipped in between
+                os.fchmod(f.fileno(), 0o644)
+            else:
+                os.chmod(tmp, 0o644)
         os.replace(tmp, path)
     except BaseException:
         os.unlink(tmp)
@@ -254,7 +263,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'cfg': cfg, **render(cfg, columns, body.get('rc') is True, d),
                                    'previews': previews(cfg, d)})
         if self.path == '/api/save':
-            save(cfg, SAVE)
+            try:
+                save(cfg, SAVE)
+            except (OSError, ValueError) as e:
+                return self.send(500, {'error': str(e)})
             return self.send(200, {'cfg': cfg, 'path': SAVE})
         self.send(404, {'error': 'not found'})
 

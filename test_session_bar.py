@@ -527,6 +527,7 @@ with tempfile.TemporaryDirectory() as t:  # saved whole, through a temporary fil
     cfg = {**sb.DEFAULT, 'rows': [['load', 'battery'], ['ctx']], 'meter': 7, 'palette': 'gruvbox'}
     web.save(cfg, path)
     assert sb.load_config(path) == cfg and os.listdir(t) == ['session-bar.json'], os.listdir(t)
+    assert os.stat(path).st_mode & 0o777 == 0o644
 c = web.clean({'rows': [['ctx', 'bogus', 'rc'], ['repo']], 'edge': ['rc', 'ctx'], 'palette': 'nord', 'meter': 99})
 assert c['rows'] == [['ctx'], ['repo']] and c['edge'] == ['rc'] and c['palette'] == 'nord' and c['meter'] == 30, c
 before = json.dumps(web.SAMPLE)
@@ -603,6 +604,11 @@ with tempfile.TemporaryDirectory() as t:
     assert status('POST', '/api/save', b'{oops', **J) == 400 and status('POST', '/api/save', b'{}', **{'Content-Type': 'text/plain'}) == 400
     assert {status('GET', p) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
     assert not os.path.exists(web.SAVE)
+    # checked again at save time: a folder swapped for a symlink after the page opened is not written into
+    os.makedirs(os.path.join(t, 'elsewhere'))
+    os.symlink(os.path.join(t, 'elsewhere'), os.path.join(t, 'via'))
+    web.SAVE = os.path.join(t, 'via', 'session-bar.json')
+    assert status('POST', '/api/save', json.dumps({'cfg': {}}).encode(), **J) == 500 and os.listdir(os.path.join(t, 'elsewhere')) == []
     srv.shutdown()
     srv.server_close()
 
@@ -633,9 +639,17 @@ with tempfile.TemporaryDirectory() as t:
     open(os.path.join(loose, '.claude', 'session-bar.json'), 'w').close()
     os.chmod(os.path.join(loose, '.claude', 'session-bar.json'), 0o666)
     assert [web.layout_for(p, user, home)[1] for p in (shared, linked, loose)] == ['user'] * 3
-    os.symlink(os.path.join(t, 'victim'), os.path.join(shared, '.claude', 'session-bar.json.tmp'))
-    web.save(sb.DEFAULT, os.path.join(shared, '.claude', 'session-bar.json'))
-    assert not os.path.exists(os.path.join(t, 'victim')) and sb.load_config(os.path.join(shared, '.claude', 'session-bar.json')) == sb.DEFAULT
+    try:
+        web.save(sb.DEFAULT, os.path.join(shared, '.claude', 'session-bar.json'))
+        raise AssertionError('saved into a folder anyone can write')
+    except ValueError:
+        pass
+    os.symlink(os.path.join(t, 'victim'), layout + '.tmp')
+    web.save(sb.DEFAULT, layout)
+    assert not os.path.exists(os.path.join(t, 'victim')) and sb.load_config(layout) == sb.DEFAULT
+    os.remove(layout + '.tmp')
+    with open(layout, 'w') as f:  # hostile again, for the detached run below
+        f.write('{"rows": [["nope", 5]], "meter": "x"' + ' ' * 70_000 + '}')
     # started detached, the page's server answers for the project's layout; with no browser to open, the address is
     # printed; with one, nothing is (so `! session-bar` adds next to nothing to the conversation)
     bare = {k: v for k, v in os.environ.items() if k not in ('DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'SESSION_BAR_CONFIG')}
