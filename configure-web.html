@@ -279,9 +279,8 @@ const accepts = (place, n) => S.places[place].includes(n);
 const listOf = (place, row) => place === 'rows' ? cfg.rows[row] : cfg[place];
 const placed = () => new Set([...cfg.top_left, ...cfg.top_right, ...cfg.rows.flat(), ...cfg.edge]);
 
-const TOKEN = '?t=' + encodeURIComponent(new URLSearchParams(location.search).get('t') || '');  // every request carries it
-async function api(path, body) {
-  const r = await fetch(path + TOKEN, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+async function api(path, body) {  // the session cookie, set when the page opened, goes with every request
+  const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
 }
@@ -660,7 +659,7 @@ function gone() { $('#gone').classList.add('show'); $('#state').className = 'sta
 setInterval(async () => {
   try { await api('/api/ping', {}); misses = 0; $('#gone').classList.remove('show'); } catch (e) { if (++misses >= 2) gone(); }
 }, 5000);
-addEventListener('pagehide', () => navigator.sendBeacon('/api/bye' + TOKEN, ''));
+addEventListener('pagehide', () => navigator.sendBeacon('/api/bye', ''));
 addEventListener('resize', drawScreen);
 
 (async () => {

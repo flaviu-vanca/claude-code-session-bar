@@ -8,10 +8,11 @@ It serves configure-web.html on 127.0.0.1, opens it in the browser, and stops a 
 (Ctrl+C stops it at once). Save writes session-bar.json, which the card reads on its next run. Stdlib only, like the
 card; nothing here reaches the model.
 """
+import hmac
+import http.cookies
 import importlib.util
 import json
 import os
-import hmac
 import secrets
 import shutil
 import stat
@@ -231,28 +232,51 @@ class Life:
 
 
 class Handler(BaseHTTPRequestHandler):
-    hosts, life, token = set(), None, ''
+    # token: the address's, good for one opening of the page; session: the cookie that opening sets, which every
+    # later request carries. Another user of the machine can reach 127.0.0.1 and can read the browser's command line
+    # (ps), so the token is spent by the time they could use it, and the cookie never leaves the browser (HttpOnly).
+    hosts, life, token, session, cookie = set(), None, '', '', ''
 
-    def send(self, code, body, kind='application/json'):
+    def send(self, code, body, kind='application/json', headers=()):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header('Content-Type', kind)
         self.send_header('Content-Length', str(len(data)))
         self.send_header('Cache-Control', 'no-store')
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
     def ok(self):
-        """This machine's page (Host, Origin) holding this server's token (?t=): another user of the machine can reach
-        127.0.0.1 too, but never sees the address the browser was given. Sets self.route, the path without its query."""
-        self.route, _, query = self.path.partition('?')
-        given = urllib.parse.parse_qs(query).get('t', [''])[0]
+        """This machine's page (Host, Origin) carrying the session cookie. Sets self.route, the path without its
+        query."""
+        self.route = self.path.partition('?')[0]
+        jar = http.cookies.SimpleCookie()
+        try:
+            jar.load(self.headers.get('Cookie', ''))
+        except http.cookies.CookieError:
+            pass
+        held = jar[self.cookie].value if self.cookie in jar else ''
         return (trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)
-                and hmac.compare_digest(given.encode(), self.token.encode()))
+                and bool(held) and hmac.compare_digest(held.encode(), self.session.encode()))
+
+    def opening(self):
+        """The first opening of the page, with the address's token, which it spends."""
+        given = urllib.parse.parse_qs(self.path.partition('?')[2]).get('t', [''])[0]
+        if (self.route == '/' and Handler.token and hmac.compare_digest(given.encode(), Handler.token.encode())
+                and trusted(self.headers.get('Host', ''), self.headers.get('Origin'), self.command, self.hosts)):
+            Handler.token = ''
+            return True
+        return False
 
     def do_GET(self):
         if not self.ok():
-            return self.send(403, {'error': 'forbidden'})
+            if not self.opening():
+                return self.send(403, {'error': 'forbidden'})
+            with open(PAGE, 'rb') as f:
+                return self.send(200, f.read(), 'text/html; charset=utf-8', [(
+                    'Set-Cookie', f'{self.cookie}={self.session}; HttpOnly; SameSite=Strict; Path=/')])
         if self.route == '/':
             with open(PAGE, 'rb') as f:
                 return self.send(200, f.read(), 'text/html; charset=utf-8')
@@ -303,7 +327,8 @@ def make_server(port, life):
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     port = server.server_address[1]
     Handler.hosts, Handler.life = {f'127.0.0.1:{port}', f'localhost:{port}'}, life
-    Handler.token = secrets.token_urlsafe(24)
+    Handler.token, Handler.session = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+    Handler.cookie = f'session-bar-{port}'  # cookies are per host, not per port: one name per server
     return server
 
 

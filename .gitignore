@@ -1,3 +1,4 @@
 __pycache__/
 *.pyc
 session-bar.json
+.playwright-mcp/

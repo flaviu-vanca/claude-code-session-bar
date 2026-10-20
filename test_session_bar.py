@@ -612,19 +612,29 @@ with tempfile.TemporaryDirectory() as t:
     web.SAVE = os.path.join(t, 'session-bar.json')
     srv = web.make_server(0, web.Life(time.time()))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base, T = f'http://127.0.0.1:{srv.server_address[1]}', '?t=' + web.Handler.token
-    post = lambda path, body, **h: urllib.request.urlopen(urllib.request.Request(
-        base + path + T, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **h}), timeout=5)
-    # the page and its API answer only with the address's token: another user of this machine cannot drive them
-    for req in (base + '/', base + '/api/state', base + '/api/state?t=wrong', urllib.request.Request(
-            base + '/api/save', data=b'{}', headers={'Content-Type': 'application/json'})):
+    base, token = f'http://127.0.0.1:{srv.server_address[1]}', web.Handler.token
+
+    def refused(req):
         try:
             urllib.request.urlopen(req, timeout=5)
-            raise AssertionError(f'answered without the token: {req}')
+            raise AssertionError(f'answered: {req}')
         except urllib.error.HTTPError as e:
             assert e.code == 403, e.code
-    assert len(web.Handler.token) >= 20
-    st = json.load(urllib.request.urlopen(base + '/api/state' + T, timeout=5))
+
+    # the address's token opens the page once and is swapped for a session cookie; a token read from the browser's
+    # command line (ps shows it to every user of the machine) is worth nothing after that, and nothing else opens it
+    for req in (base + '/', base + '/?t=wrong', base + '/api/state', base + f'/api/state?t={token}'):
+        refused(req)
+    first = urllib.request.urlopen(f'{base}/?t={token}', timeout=5)
+    cookie = first.headers['Set-Cookie']
+    assert first.status == 200 and 'HttpOnly' in cookie and 'SameSite=Strict' in cookie and len(token) >= 20, cookie
+    C = {'Cookie': cookie.split(';')[0]}
+    refused(f'{base}/?t={token}')  # used once
+    assert urllib.request.urlopen(urllib.request.Request(base + '/', headers=C), timeout=5).status == 200  # a reload
+    refused(urllib.request.Request(base + '/api/save', data=b'{}', headers={'Content-Type': 'application/json'}))
+    post = lambda path, body, **h: urllib.request.urlopen(urllib.request.Request(
+        base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **C, **h}), timeout=5)
+    st = json.load(urllib.request.urlopen(urllib.request.Request(base + '/api/state', headers=C), timeout=5))
     assert st['cfg'] == sb.load_config(web.SAVE) and set(st['palettes']) == set(sb.PALETTES), st['cfg']
     assert set(st) == {'cfg', 'kinds', 'places', 'what', 'palettes', 'columns', 'file', 'scope'}, set(st)  # what the page reads
     assert st['file'] == web.SAVE, st['file']
@@ -660,16 +670,17 @@ with tempfile.TemporaryDirectory() as t:
         conn.close()
         return r.status
 
-    J, T = {'Content-Type': 'application/json'}, '?t=' + web.Handler.token
-    assert status('POST', '/api/save' + T, b'{}', **J, **{'Content-Length': str(web.MAX_BODY + 1)}) == 400
-    assert status('POST', '/api/save' + T, b'{oops', **J) == 400 and status('POST', '/api/save' + T, b'{}', **{'Content-Type': 'text/plain'}) == 400
-    assert {status('GET', p + T) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
+    opened = urllib.request.urlopen(f'http://127.0.0.1:{srv.server_address[1]}/?t={web.Handler.token}', timeout=5)
+    J = {'Content-Type': 'application/json', 'Cookie': opened.headers['Set-Cookie'].split(';')[0]}
+    assert status('POST', '/api/save', b'{}', **J, **{'Content-Length': str(web.MAX_BODY + 1)}) == 400
+    assert status('POST', '/api/save', b'{oops', **J) == 400 and status('POST', '/api/save', b'{}', **{**J, 'Content-Type': 'text/plain'}) == 400
+    assert {status('GET', p, Cookie=J['Cookie']) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
     assert not os.path.exists(web.SAVE)
     # checked again at save time: a folder swapped for a symlink after the page opened is not written into
     os.makedirs(os.path.join(t, 'elsewhere'))
     os.symlink(os.path.join(t, 'elsewhere'), os.path.join(t, 'via'))
     web.SAVE = os.path.join(t, 'via', 'session-bar.json')
-    assert status('POST', '/api/save' + T, json.dumps({'cfg': {}}).encode(), **J) == 500 and os.listdir(os.path.join(t, 'elsewhere')) == []
+    assert status('POST', '/api/save', json.dumps({'cfg': {}}).encode(), **J) == 500 and os.listdir(os.path.join(t, 'elsewhere')) == []
     srv.shutdown()
     srv.server_close()
 
@@ -734,10 +745,16 @@ with tempfile.TemporaryDirectory() as t:
     run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', '0'], cwd=os.path.join(proj, 'src'),
                          env={**bare, 'HOME': home, 'PATH': '/nonexistent'}, capture_output=True, text=True, timeout=15)
     assert run.returncode == 0 and time.time() - began < 5 and run.stdout.count('\n') == 1 and 'http://127.0.0.1:' in run.stdout, run
-    root, token = run.stdout.strip().rsplit(' ', 1)[1].split('/?t=')
-    st = json.load(urllib.request.urlopen(f'{root}/api/state?t={token}', timeout=5))
+    url = run.stdout.strip().rsplit(' ', 1)[1]
+
+    def session(url):  # open the page's address once, as the browser would, and keep its cookie
+        r = urllib.request.urlopen(url, timeout=5)
+        return url.split('/?t=')[0], {'Cookie': r.headers['Set-Cookie'].split(';')[0]}
+
+    root, C = session(url)
+    st = json.load(urllib.request.urlopen(urllib.request.Request(f'{root}/api/state', headers=C), timeout=5))
     assert st['scope'] == 'project' and st['file'] == layout and st['cfg'] == sb.load_config('/nonexistent'), st
-    urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye?t={token}', data=b''), timeout=5)
+    urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
     import socket
 
     def browser(name, body):  # a stand-in browser: BROWSER runs it with the page's address
@@ -759,7 +776,8 @@ with tempfile.TemporaryDirectory() as t:
     with open(opened) as f:
         url = f.read().strip()
     assert '/?t=' in url, url  # the browser gets the address with its token
-    urllib.request.urlopen(urllib.request.Request(url.replace('/?t=', '/api/bye?t='), data=b''), timeout=5)
+    root, C = session(url)
+    urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
     # the server answers while a browser that blocks (a console one) still runs
     port = free_port()
     slow = subprocess.Popen([sys.executable, '-I', '-S', wspec.origin, '--serve', str(port)], cwd=proj, stdout=subprocess.DEVNULL,
