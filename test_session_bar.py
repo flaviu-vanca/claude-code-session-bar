@@ -800,4 +800,16 @@ with tempfile.TemporaryDirectory() as t:
     os.symlink(os.path.join(t, 'victim2'), os.path.join(evil, '.claude', 'session-bar.json'))
     run = installer('--scope', 'project', '--project', evil, '--yes')
     assert run.returncode == 1 and not os.path.exists(os.path.join(t, 'victim2')), run
+    # what the installer prints from a repository's files cannot drive the terminal, and a project's old settings
+    # are backed up in the user's folder, never beside them, where git would see them
+    hostile = os.path.join(t, 'hostile')
+    os.makedirs(os.path.join(hostile, '.claude'))
+    with open(os.path.join(hostile, '.claude', 'settings.local.json'), 'w', encoding='utf-8') as f:
+        json.dump({'statusLine': {'type': 'command', 'command': 'x\x1b]0;pwned\x07\x9b31m'}, 'env': {'KEY': 'k'}}, f, ensure_ascii=False)
+    for args in ((), ('--yes',)):
+        run = installer('--scope', 'project', '--project', hostile, *args)
+        assert not set(run.stdout) & {'\x1b', '\x07', '\x9b'}, repr(run.stdout)
+    assert not [n for n in os.listdir(os.path.join(hostile, '.claude')) if '.bak-' in n], os.listdir(os.path.join(hostile, '.claude'))
+    kept = [os.path.join(r, n) for r, _, ns in os.walk(os.path.join(c, 'session-bar', 'backups')) for n in ns]
+    assert len(kept) == 1 and kept[0] in run.stdout and 'pwned' in open(kept[0], encoding='utf-8').read(), (kept, run.stdout)
 print('ok')

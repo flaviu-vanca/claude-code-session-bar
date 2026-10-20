@@ -9,9 +9,11 @@ settings file is written only when it can be read, after a backup, with the diff
 """
 import argparse
 import difflib
+import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -29,6 +31,12 @@ CARD_ENV = ['HOME', 'USERPROFILE', 'SYSTEMROOT', 'COLUMNS', 'CLAUDE_CONFIG_DIR',
 PAGE_ENV = CARD_ENV + ['PATH', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS',
                        'BROWSER', 'TMPDIR', 'TEMP', 'TMP']
 PROJECT_LAYOUT = '$CLAUDE_PROJECT_DIR/.claude/session-bar.json'
+CONTROL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')  # C0 but tab and newline, and C1
+
+
+def shown(text):
+    """`text` from a file, fit to print: a repository's settings cannot drive the terminal."""
+    return CONTROL.sub('', text)
 
 
 class SettingsError(Exception):
@@ -78,15 +86,18 @@ def dump(data):
     return json.dumps(data, indent=2, ensure_ascii=False) + '\n'  # Claude Code's own layout, Ș kept as Ș
 
 
-def write_settings(path, data, stamp):
+def write_settings(path, data, stamp, backup_dir=None):
     """Writes `data` whole to `path`, or to the file a symlink there points at: a backup of the old file first
     (<file>.bak-<stamp>-session-bar, then -2, -3 ...), then a temporary file renamed over it with the old mode.
-    Returns the backup's path, or None for a new file."""
+    The backup goes into `backup_dir` when given, else beside the file. Returns its path, or None for a new file."""
     real = os.path.realpath(path)
     backup, mode = None, 0o600  # a new settings file is private: its env block can hold keys
     if os.path.exists(real):
         mode = stat.S_IMODE(os.stat(real).st_mode)
-        base, n = f'{real}.bak-{stamp}-session-bar', 1
+        if backup_dir:
+            os.makedirs(backup_dir, exist_ok=True)
+        base = os.path.join(backup_dir or os.path.dirname(real), f'{os.path.basename(real)}.bak-{stamp}-session-bar')
+        n = 1
         while True:
             backup = base if n == 1 else f'{base}-{n}'
             try:  # O_EXCL: a name taken by anything, a planted symlink too, is skipped, never written through
@@ -151,6 +162,11 @@ def write_launcher(bin_dir, python, configure, windows):
     return paths
 
 
+def saved(backup):
+    if backup:
+        print(f'Backed up the old file to {backup}')
+
+
 def load_card():
     spec = importlib.util.spec_from_file_location('session_bar', os.path.join(HERE, 'session-bar.py'))
     card = importlib.util.module_from_spec(spec)
@@ -158,13 +174,13 @@ def load_card():
     return card
 
 
-def uninstall(args, old, path, code, script, bin_dir, layouts):
+def uninstall(args, old, path, code, script, bin_dir, layouts, backups):
     current = old.get('statusLine')
     if is_ours(current, script):
         new = {k: v for k, v in old.items() if k != 'statusLine'}
-        print(settings_diff(old, new, path), end='')
+        print(shown(settings_diff(old, new, path)), end='')
         if not args.dry_run:
-            write_settings(path, new, time.strftime('%Y-%m-%d'))
+            saved(write_settings(path, new, time.strftime('%Y-%m-%d'), backups))
     elif current is not None:
         print(f'The statusLine in {path} does not run the installed card; left as it is.')
     if args.scope == 'user' and not args.dry_run:
@@ -200,12 +216,15 @@ def main(argv=None):
     script, user_layout = os.path.join(code, 'session-bar.py'), os.path.join(code, 'session-bar.json')
     bin_dir = os.path.join(os.path.expanduser('~'), '.local', 'bin')  # Claude Code's own bin folder (H5 in 2.1.303)
     if args.scope == 'user':
-        path, layout = os.path.join(claude, 'settings.json'), user_layout
+        path, layout, backups = os.path.join(claude, 'settings.json'), user_layout, None
     else:
         project = os.path.abspath(args.project)
         path = os.path.join(project, '.claude', 'settings.local.json')
         layout = os.path.join(project, '.claude', 'session-bar.json')
         root = os.path.realpath(project)
+        # a project's old settings can hold keys: backed up in the user's folder, out of the repository's sight
+        key = hashlib.sha256(root.encode()).hexdigest()[:12]
+        backups = os.path.join(code, 'backups', f'{os.path.basename(root)}-{key}')
         for p in (path, layout):  # a cloned repository controls its .claude folder: nothing it links to elsewhere
             real = os.path.realpath(p)
             if real != root and not real.startswith(root + os.sep):
@@ -217,11 +236,11 @@ def main(argv=None):
         print(e)
         return 1
     if args.uninstall:
-        return uninstall(args, old, path, code, script, bin_dir, [user_layout, layout])
+        return uninstall(args, old, path, code, script, bin_dir, [user_layout, layout], backups)
 
     current = old.get('statusLine')
     if current is not None and not is_ours(current, script) and not args.yes:
-        print(f'{path} already has a statusLine:\n  {current.get("command") if isinstance(current, dict) else current}')
+        print(shown(f'{path} already has a statusLine:\n  {current.get("command") if isinstance(current, dict) else current}'))
         answer = input('Replace it? [y/N] ') if sys.stdin.isatty() else ''
         if answer.strip().lower() != 'y':
             print('Nothing was changed (--yes replaces it).')
@@ -232,7 +251,7 @@ def main(argv=None):
         print('Git Bash was not found, so Claude Code runs the status line through PowerShell, which has no env -i: '
               "the card receives Claude Code's whole environment, keys included.")
     new = {**old, 'statusLine': status_line(card_command(sys.executable, script, args.scope == 'project', shell))}
-    print(settings_diff(old, new, path), end='')
+    print(shown(settings_diff(old, new, path)), end='')
     if args.dry_run:
         print('Dry run: nothing was written.')
         return 0
@@ -253,7 +272,7 @@ def main(argv=None):
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(dump(card.DEFAULT))
         print(f'Wrote the layout {target}')
-    write_settings(path, new, time.strftime('%Y-%m-%d'))
+    saved(write_settings(path, new, time.strftime('%Y-%m-%d'), backups))
     print(f'Wrote {path}')
     return 0
 
