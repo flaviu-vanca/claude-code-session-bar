@@ -609,6 +609,15 @@ import threading
 import urllib.error
 import urllib.request
 
+# the server starts without a reverse DNS lookup: http.server asks getfqdn() for its name, which on macOS can take
+# longer than the launcher waits
+saved, socket.getfqdn = socket.getfqdn, lambda *a: (_ for _ in ()).throw(AssertionError('getfqdn called'))
+try:
+    web.make_server(0, web.Life(time.time())).server_close()
+finally:
+    socket.getfqdn = saved
+
+
 def opened(base, token):
     """The page's first act: its address's one-time token, from #t=, swapped for the session it sends as X-Session."""
     r = urllib.request.urlopen(urllib.request.Request(base + '/api/open', data=json.dumps({'t': token}).encode(),

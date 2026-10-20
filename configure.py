@@ -15,6 +15,7 @@ import os
 import queue
 import secrets
 import shutil
+import socketserver
 import stat
 import subprocess
 import sys
@@ -348,8 +349,16 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class Server(ThreadingHTTPServer):
+    def server_bind(self):
+        """HTTPServer's own, without its socket.getfqdn(): a reverse DNS lookup that can take seconds on macOS,
+        longer than the launcher waits for the server to say it listens."""
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 def make_server(port, life):
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server = Server(('127.0.0.1', port), Handler)
     port = server.server_address[1]
     Handler.hosts, Handler.life = {f'127.0.0.1:{port}', f'localhost:{port}'}, life
     Handler.token, Handler.session, Handler.spent = secrets.token_urlsafe(24), secrets.token_urlsafe(24), ''
