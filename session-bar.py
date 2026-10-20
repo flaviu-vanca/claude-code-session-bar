@@ -8,14 +8,11 @@ What each place shows, in what order, comes from session-bar.json beside this sc
 the path); without it the card is drawn with DEFAULT. Nothing here reaches the model, so no element costs tokens.
 Options: --meter N, the meters' longest length in cells (3 to 30), over the settings' "meter".
 """
-import fcntl
 import json
 import os
 import re
 import stat
-import struct
 import sys
-import termios
 import time
 
 # The card's colours, one set per palette: accent is the model's name; edge the frame, visible on a dark terminal
@@ -221,32 +218,13 @@ def card_width(columns, rc=False, notices=False):
     return max(30, width - (RC_PILL if rc and columns >= 60 else 0))
 
 
-def terminal_columns():
-    """The terminal's width: Claude Code's own terminal, found up the process tree (this has none)."""
-    pid = os.getppid()
-    for _ in range(8):
-        for fd in (0, 1, 2):
-            try:
-                path = os.readlink(f'/proc/{pid}/fd/{fd}')
-            except OSError:
-                continue
-            if path.startswith('/dev/pts/') or path.startswith('/dev/tty'):
-                try:
-                    tty = os.open(path, os.O_RDONLY | os.O_NOCTTY)
-                    try:
-                        return struct.unpack('HHHH', fcntl.ioctl(tty, termios.TIOCGWINSZ, b'\0' * 8))[1]
-                    finally:
-                        os.close(tty)
-                except OSError:
-                    pass
-        try:
-            with open(f'/proc/{pid}/stat') as f:
-                pid = int(f.read().rsplit(')', 1)[1].split()[1])
-        except (OSError, ValueError, IndexError):
-            break
-        if pid <= 1:
-            break
-    return int(os.environ.get('COLUMNS') or 120)
+def columns(env):
+    """The terminal's width: COLUMNS, which Claude Code sets from its own terminal at every run; 120 without it."""
+    try:
+        n = int(env.get('COLUMNS') or 0)
+    except ValueError:
+        n = 0
+    return n if n > 0 else 120
 
 
 def head_of(path, n=256):
@@ -782,7 +760,7 @@ def main():
     except (TypeError, ValueError, AttributeError):  # a payload or session file of another shape costs the chips, not the card
         cs = []
     meter = meter_arg(sys.argv) if '--meter' in sys.argv else cfg['meter']
-    lines = card(d, card_width(terminal_columns(), bool(rc), notices), now, h, meter, cs, cfg)
+    lines = card(d, card_width(columns(os.environ), bool(rc), notices), now, h, meter, cs, cfg)
     sys.stdout.buffer.write(''.join(paint(line) + '\n' for line in lines).encode())
 
 

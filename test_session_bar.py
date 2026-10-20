@@ -59,6 +59,11 @@ assert sb.card_width(188, rc=True) == 180 and sb.card_width(60, rc=True) == 52 a
 # 80 columns; narrower, they go under the card
 assert sb.card_width(188, rc=True, notices=True) == 145 and sb.card_width(188, notices=True) == 145
 assert sb.card_width(123, notices=True) == 80 and sb.card_width(122, notices=True) == 118 and sb.card_width(122, True, True) == 114
+# the card takes the terminal's width from COLUMNS, which Claude Code sets at every run; 120 without a usable one
+assert sb.columns({'COLUMNS': '100'}) == 100 and sb.columns({}) == 120
+assert sb.columns({'COLUMNS': ''}) == 120 and sb.columns({'COLUMNS': 'x'}) == 120 and sb.columns({'COLUMNS': '-5'}) == 120
+src = open(spec.origin).read()
+assert 'fcntl' not in src and 'termios' not in src and '/fd/' not in src, 'no Linux-only terminal probe'
 assert sb.heat(0) == (0x3F, 0xB9, 0x50) and sb.heat(0.6) == (0xE3, 0xB3, 0x41) and sb.heat(1) == (0xF8, 0x51, 0x49)
 assert sb.model_name('claude-opus-5-5', None) == 'Opus 5.5'
 assert sb.model_name('claude-sonnet-5-5[1m]', None) == 'Sonnet 5.5 1M'
@@ -348,6 +353,11 @@ bad = json.dumps({**FULL, 'prompt_cache': 'x', 'pr': 'x', 'vim': 'x', 'version':
 env = {**os.environ, 'SESSION_BAR_CONFIG': '/nonexistent/session-bar.json'}
 run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=bad.encode(), capture_output=True, env=env)
 assert run.returncode == 0 and run.stdout.decode().count('\n') == 4 and not run.stderr, run
+with tempfile.TemporaryDirectory() as t:  # an empty home: no session file, no newer version, no notice
+    for cols, width in (('100', 96), ('x', 116)):
+        run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(),
+                             capture_output=True, env={**env, 'HOME': t, 'COLUMNS': cols})
+        assert {len(ANSI.sub('', l)) for l in run.stdout.decode().splitlines()} == {width}, (cols, run)
 
 # the script reads its settings
 with tempfile.TemporaryDirectory() as t:

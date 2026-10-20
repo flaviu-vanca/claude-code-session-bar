@@ -11,6 +11,7 @@ card; nothing here reaches the model.
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -186,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/state':
             return self.send(200, {'cfg': sb.load_config(SAVE), 'places': sb.PLACES, 'what': WHAT,
                                    'kinds': {'text': sb.TEXT, 'meter': sb.METERS, 'chip': sb.CHIPS},
-                                   'palettes': sb.PALETTES, 'columns': sb.terminal_columns() or 160})
+                                   'palettes': sb.PALETTES, 'columns': shutil.get_terminal_size((160, 24)).columns})
         self.send(404, {'error': 'not found'})
 
     def do_POST(self):
