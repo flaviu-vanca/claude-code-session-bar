@@ -12,6 +12,8 @@ import importlib.util
 import json
 import os
 import shutil
+import stat
+import subprocess
 import sys
 import tempfile
 import threading
@@ -24,7 +26,28 @@ spec = importlib.util.spec_from_file_location('sb', os.path.join(HERE, 'session-
 sb = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sb)
 PAGE = os.path.join(HERE, 'configure-web.html')
-SAVE = sb.CONFIG
+
+
+def layout_for(cwd, user_layout, home):
+    """The layout that applies in `cwd`: the nearest project's .claude/session-bar.json, a regular file, found going
+    up to home (home itself is not a project) or, outside home, to the root; else the user's."""
+    d, home = os.path.abspath(cwd), os.path.abspath(home)
+    under = d.startswith(home + os.sep)
+    while not (under and d == home):
+        path = os.path.join(d, '.claude', 'session-bar.json')
+        try:
+            if stat.S_ISREG(os.lstat(path).st_mode):
+                return path, 'project'
+        except OSError:
+            pass
+        if os.path.dirname(d) == d:
+            break
+        d = os.path.dirname(d)
+    return user_layout, 'user'
+
+
+SAVE, SCOPE = (sb.CONFIG, 'custom') if os.environ.get('SESSION_BAR_CONFIG') else layout_for(
+    os.getcwd(), os.path.join(HERE, 'session-bar.json'), os.path.expanduser('~'))
 MAX_BODY = 64 * 1024
 LOCK = threading.Lock()  # use_palette sets the card's colours for the whole module
 
@@ -187,7 +210,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/state':
             return self.send(200, {'cfg': sb.load_config(SAVE), 'places': sb.PLACES, 'what': WHAT,
                                    'kinds': {'text': sb.TEXT, 'meter': sb.METERS, 'chip': sb.CHIPS},
-                                   'palettes': sb.PALETTES, 'columns': shutil.get_terminal_size((160, 24)).columns})
+                                   'palettes': sb.PALETTES, 'columns': shutil.get_terminal_size((160, 24)).columns,
+                                   'file': SAVE, 'scope': SCOPE})
         self.send(404, {'error': 'not found'})
 
     def do_POST(self):
@@ -230,9 +254,34 @@ def make_server(port, life):
     return server
 
 
-def main():
+def detach(port):
+    """Starts the server in a process of its own and returns: the address is printed only when no browser opened, so
+    `! session-bar` in Claude Code adds next to nothing to the conversation."""
+    kw = {'creationflags': 0x8 | 0x200} if os.name == 'nt' else {'start_new_session': True}  # DETACHED, NEW_GROUP
+    child = subprocess.Popen([sys.executable, '-I', '-S', os.path.abspath(__file__), '--serve', str(port)],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, **kw)
+    first = []
+    reader = threading.Thread(target=lambda: first.append(child.stdout.readline()), daemon=True)
+    reader.start()
+    reader.join(10)
+    line = first[0].decode(errors='replace').strip() if first else ''
+    if not line:
+        print('The settings page did not start.')
+        return 1
+    if not line.startswith('opened '):
+        print(line)
+    return 0
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    mode = argv[0] if argv and argv[0] in ('--detach', '--serve') else None
+    rest = argv[1:] if mode else argv
+    port = int(rest[0]) if rest else 0
+    if mode == '--detach':
+        return detach(port)
     life = Life(time.time())
-    server = make_server(int(sys.argv[1]) if len(sys.argv) > 1 else 0, life)
+    server = make_server(port, life)
     url = f'http://127.0.0.1:{server.server_address[1]}/'
 
     def watch():
@@ -241,8 +290,15 @@ def main():
         server.shutdown()
 
     threading.Thread(target=watch, daemon=True).start()
-    print(f'Session Bar settings: {url}\nIt stops a few seconds after the page closes; Ctrl+C stops it now.', flush=True)
-    webbrowser.open(url)
+    if mode == '--serve':  # one line to the launcher, then nothing: a browser it starts writes to devnull, not to it
+        out, devnull = os.dup(1), os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 1)
+        line = f'opened {url}' if webbrowser.open(url) else f'Session Bar settings ({SCOPE}: {SAVE}): {url}'
+        os.write(out, (line + '\n').encode())
+        os.close(out)
+    else:
+        print(f'Session Bar settings: {url}\nIt stops a few seconds after the page closes; Ctrl+C stops it now.', flush=True)
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -252,4 +308,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

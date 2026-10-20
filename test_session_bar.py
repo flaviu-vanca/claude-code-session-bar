@@ -564,7 +564,10 @@ with tempfile.TemporaryDirectory() as t:
         base + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **h}), timeout=5)
     st = json.load(urllib.request.urlopen(base + '/api/state', timeout=5))
     assert st['cfg'] == sb.load_config(web.SAVE) and set(st['palettes']) == set(sb.PALETTES), st['cfg']
-    assert set(st) == {'cfg', 'kinds', 'places', 'what', 'palettes', 'columns'}, set(st)  # what the page reads
+    assert set(st) == {'cfg', 'kinds', 'places', 'what', 'palettes', 'columns', 'file', 'scope'}, set(st)  # what the page reads
+    assert st['file'] == web.SAVE, st['file']
+    with open(web.PAGE) as f:  # the page says which layout it edits, as text, never as markup
+        assert "$('#which').textContent = `${S.scope} layout · ${S.file}`" in f.read()
     got = json.load(post('/api/render', {'cfg': {'rows': [['week']]}, 'columns': 120, 'rc': True}))
     assert got['width'] == 112 and flat(got['lines'][1]).startswith('│ week ▰▰▰▰▰▰▰▱▱▱ 69%') and set(got['previews']) == set(pv), got['lines'][1]
     assert set(got) == {'cfg', 'width', 'lines', 'previews'}, set(got)
@@ -577,6 +580,65 @@ with tempfile.TemporaryDirectory() as t:
     assert sb.load_config(web.SAVE) == c
     srv.shutdown()
     srv.server_close()
+
+# the server's guards: a body too big, not JSON or of another type, and paths that try to leave the page, all
+# answered without touching the layout
+import http.client
+
+with tempfile.TemporaryDirectory() as t:
+    web.SAVE = os.path.join(t, 'guarded.json')
+    srv = web.make_server(0, web.Life(time.time()))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+    def status(method, path, body=b'', **headers):
+        conn = http.client.HTTPConnection('127.0.0.1', srv.server_address[1], timeout=5)
+        conn.request(method, path, body=body or None, headers=headers)
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        return r.status
+
+    J = {'Content-Type': 'application/json'}
+    assert status('POST', '/api/save', b'{}', **J, **{'Content-Length': str(web.MAX_BODY + 1)}) == 400
+    assert status('POST', '/api/save', b'{oops', **J) == 400 and status('POST', '/api/save', b'{}', **{'Content-Type': 'text/plain'}) == 400
+    assert {status('GET', p) for p in ('/../session-bar.py', '/%2e%2e/session-bar.json', '/configure.py')} == {404}
+    assert not os.path.exists(web.SAVE)
+    srv.shutdown()
+    srv.server_close()
+
+# the launcher edits the layout that applies here: the nearest project's, else the user's; never one above home
+with tempfile.TemporaryDirectory() as t:
+    home, user = os.path.join(t, 'h'), os.path.join(t, 'h', '.claude', 'session-bar', 'session-bar.json')
+    proj = os.path.join(home, 'work', 'app')
+    os.makedirs(os.path.join(proj, '.claude'))
+    os.makedirs(os.path.join(proj, 'src', 'deep'))
+    os.makedirs(os.path.join(t, '.claude'))
+    open(os.path.join(t, '.claude', 'session-bar.json'), 'w').close()  # above home: never used
+    assert web.layout_for(os.path.join(home, 'work'), user, home) == (user, 'user')
+    layout = os.path.join(proj, '.claude', 'session-bar.json')
+    with open(layout, 'w') as f:  # a hostile project layout: unknown elements, wrong types, past the 64 KiB cap
+        f.write('{"rows": [["nope", 5]], "meter": "x"' + ' ' * 70_000 + '}')
+    assert web.layout_for(os.path.join(proj, 'src', 'deep'), user, home) == (layout, 'project')
+    # started detached, the page's server answers for the project's layout; with no browser to open, the address is
+    # printed; with one, nothing is (so `! session-bar` adds next to nothing to the conversation)
+    bare = {k: v for k, v in os.environ.items() if k not in ('DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'SESSION_BAR_CONFIG')}
+    began = time.time()
+    run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', '0'], cwd=os.path.join(proj, 'src'),
+                         env={**bare, 'HOME': home, 'PATH': '/nonexistent'}, capture_output=True, text=True, timeout=15)
+    assert run.returncode == 0 and time.time() - began < 5 and run.stdout.count('\n') == 1 and 'http://127.0.0.1:' in run.stdout, run
+    url = run.stdout.strip().rsplit(' ', 1)[1]
+    st = json.load(urllib.request.urlopen(url + 'api/state', timeout=5))
+    assert st['scope'] == 'project' and st['file'] == layout and st['cfg'] == sb.load_config('/nonexistent'), st
+    urllib.request.urlopen(urllib.request.Request(url + 'api/bye', data=b''), timeout=5)
+    import socket
+
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        port = s.getsockname()[1]
+    run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', str(port)], cwd=proj,
+                         env={**bare, 'HOME': home, 'BROWSER': 'true', 'PATH': '/usr/bin:/bin'}, capture_output=True, text=True, timeout=15)
+    assert run.returncode == 0 and run.stdout == '', run
+    urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{port}/api/bye', data=b''), timeout=5)
 
 # the installer (install.py): the status line command starts Python with an empty environment and a short list, so
 # no key Claude Code was started with reaches the card; paths with a space or a quote still run

@@ -212,7 +212,7 @@ body.dragging { user-select: none; }
   <header class="rise">
     <div class="brand">
       <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="12" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.3)"/><rect x="9" y="12" width="22" height="16" rx="4.5" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M13.5 18.2h3M18.5 18.2h3" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M23.5 18.2h3" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity=".38"/><path d="M13.5 23h8" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".62"/></svg>
-      <div><h1>Session Bar</h1><small>Drag elements onto the card. Save, and the status line picks it up.</small></div>
+      <div><h1>Session Bar</h1><small id="which" title="Drag elements onto the card. Save, and the status line picks it up.">Drag elements onto the card. Save, and the status line picks it up.</small></div>
     </div>
     <span class="grow"></span>
     <span class="state" id="state">Saved</span>
@@ -664,6 +664,7 @@ addEventListener('resize', drawScreen);
 
 (async () => {
   S = await api('/api/state');
+  $('#which').textContent = `${S.scope} layout · ${S.file}`;
   cfg = JSON.parse(snap(S.cfg)); saved = JSON.parse(snap(S.cfg));
   $('#addRow').addEventListener('click', () => { commit(() => cfg.rows.push([])); setActive('rows', cfg.rows.length - 1); });
   $('#pals').addEventListener('click', e => {
