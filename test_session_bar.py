@@ -932,6 +932,7 @@ seen = {}
 
 class Started:
     stdout = io.BytesIO(b'Session Bar settings (user: x): http://127.0.0.1:1/#t=x\nopened\n')
+    stderr = io.BytesIO(b'')
 
 
 def popen(cmd, **kw):
@@ -947,6 +948,28 @@ finally:
     subprocess.Popen = saved
     del os.environ['FAKE_SECRET']
 assert 'FAKE_SECRET' not in seen['env'] and set(seen['env']) <= set(web.PAGE_ENV) and web.PAGE_ENV == inst.PAGE_ENV
+
+
+# a server that dies before it listens: the launcher says why at once, from the server's last error line
+import contextlib
+
+
+class Died:
+    stdout = io.BytesIO(b'')
+    stderr = io.BytesIO(b'Traceback (most recent call last):\nOSError: [Errno 48] Address already in use\n')
+
+    def wait(self, timeout=None):
+        return 1
+
+
+subprocess.Popen = lambda cmd, **kw: Died()
+said, began = io.StringIO(), time.time()
+try:
+    with contextlib.redirect_stdout(said):
+        code = web.detach(0)
+finally:
+    subprocess.Popen = saved
+assert code == 1 and 'Address already in use' in said.getvalue() and 'exit 1' in said.getvalue() and time.time() - began < 3, said.getvalue()
 assert {'XAUTHORITY', 'XDG_CURRENT_DESKTOP'} <= set(web.PAGE_ENV), 'what a desktop browser needs under X11'
 
 # launchers for a home with Ș in its name, on Windows: the .cmd stays ASCII through %USERPROFILE%, a % is doubled;

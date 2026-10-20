@@ -374,16 +374,30 @@ def detach(port):
     kw = {'creationflags': 0x8 | 0x200} if os.name == 'nt' else {'start_new_session': True}  # DETACHED, NEW_GROUP
     env = {k: v for k, v in os.environ.items() if k in PAGE_ENV}  # a .cmd launcher has no env -i: keys stop here
     child = subprocess.Popen([sys.executable, '-I', '-S', os.path.abspath(__file__), '--serve', str(port)],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, **kw)
-    said = queue.Queue()
-    threading.Thread(target=lambda: [said.put(line.decode(errors='replace').strip()) for line in child.stdout],
-                     daemon=True).start()
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, **kw)
+    said, errors = queue.Queue(), []
+
+    def hear():
+        for line in child.stdout:
+            said.put(line.decode(errors='replace').strip())
+        said.put(None)  # the end: the server is gone
+
+    threading.Thread(target=hear, daemon=True).start()
+    reading = threading.Thread(target=lambda: errors.extend(child.stderr.read().decode(errors='replace').splitlines()),
+                               daemon=True)  # the server sends its errors here until it listens, then to devnull
+    reading.start()
     try:
         listening = said.get(timeout=10)
     except queue.Empty:
         listening = ''
     if not listening:
-        print('The settings page did not start.')
+        try:
+            code = child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            print('The settings page did not answer within 10 s.')
+            return 1
+        reading.join(1)
+        print(f'The settings page did not start (exit {code}): {errors[-1] if errors else "no message"}')
         return 1
     try:
         browsed = said.get(timeout=BROWSER_WAIT)
@@ -417,6 +431,7 @@ def main(argv=None):
         out, devnull = os.dup(1), os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, 1)
         os.write(out, f'Session Bar settings ({SCOPE}: {SAVE}): {url}\n'.encode())
+        os.dup2(devnull, 2)  # listening: errors from here on would land in a pipe no one reads
         browsed = 'opened' if webbrowser.open(url) else 'no browser'
         try:
             os.write(out, f'{browsed}\n'.encode())
