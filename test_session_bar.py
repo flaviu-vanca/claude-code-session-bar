@@ -79,6 +79,12 @@ def texts(cs):
     return [''.join(p[0] for p in c) for c in cs]
 
 
+# Claude Code's idle hint, "new task? /clear to save N tokens", as a chip inside the card; offered, not in the default
+idle_d = {**FULL, 'context_window': {**FULL['context_window'], 'total_input_tokens': 313_000}}
+assert texts([sb.chip('idle', idle_d, {'idle': True}, NOW)]) == ['↺ new task? /clear 313k']
+assert sb.chip('idle', idle_d, {'idle': False}, NOW) == [] and 'idle' in sb.CHIPS and 'idle' not in sb.DEFAULT['edge']
+
+
 assert sb.chips({}, {}, NOW) == []
 ALL_D = {**FULL, 'version': '2.1.302', 'remote': {'session_id': 'x'}, 'fast_mode': True, 'vim': {'mode': 'INSERT'},
          'pr': {'number': 12, 'url': 'https://github.com/o/r/pull/12', 'review_state': 'approved'},
@@ -479,6 +485,21 @@ with tempfile.TemporaryDirectory() as t:
     assert off - beside == (39 if off >= 119 else 0), (off, beside)
     os.makedirs(os.path.join(t, '.local', 'share', 'claude', 'versions', '9.9.9'))
     assert first_line_width({}, {**FULL, 'version': '2.1.302'}) == beside, 'an update installed makes the same room'
+
+# the idle chip keeps its own thresholds (75 minutes, 100k): set CLAUDE_CODE_IDLE_TOKEN_THRESHOLD high where claude
+# starts and Claude Code's own hint is gone, the card's shows, and the card takes back the room it kept for the hint
+with tempfile.TemporaryDirectory() as t:
+    os.makedirs(os.path.join(t, '.claude', 'sessions'))
+    with open(os.path.join(t, '.claude', 'sessions', f'{os.getpid()}.json'), 'w') as f:
+        json.dump({'sessionId': FULL['session_id'], 'pid': os.getpid(), 'status': 'idle',
+                   'statusUpdatedAt': (time.time() - 80 * 60) * 1000}, f)
+    with open(os.path.join(t, 'c.json'), 'w') as f:
+        json.dump({'edge': ['idle']}, f)
+    run = subprocess.run([sys.executable, '-I', '-S', spec.origin], input=json.dumps(FULL).encode(), capture_output=True,
+                         env={**env, 'HOME': t, 'COLUMNS': '188', 'SESSION_BAR_CONFIG': os.path.join(t, 'c.json'),
+                              'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD': '999999999'})
+    lines = [ANSI.sub('', l) for l in run.stdout.decode().splitlines()]
+    assert '↺ new task? /clear' in lines[-1] and {len(l) for l in lines} == {184}, lines
 
 # the script finds the session file and the downloads where CLAUDE_CONFIG_DIR and XDG_DATA_HOME put them
 with tempfile.TemporaryDirectory() as t:

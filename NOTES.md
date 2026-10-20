@@ -71,7 +71,7 @@ the card shows 1%. Spend is shown as it comes.
 |---|---|
 | Top edge, left and right; any row | **model**, **effort**, thinking, style, agent, name (`/rename`), version, **cost**, **time**, api (API time), lines (+/-), clock, **repo** (linked to origin; ⇡ ⇣ ⇅), **cwd**, **session**, worktree, dirs (`/add-dir`), **mem**, **disks**, load, battery |
 | Meters, on any row | **ctx**, **5h**, **week**, spend (gateway only), hits (prompt cache hit ratio, green is good: cache read tokens / all input tokens, 0..1, read in 2.1.303) |
-| Bottom edge (chips) | **cloud**, **rc**, mode, **no_transcript**, **update**, **cache** (and what a cold start costs), **miss** (a cache miss and why), big (context past 200k), drafts, **sandbox**, **working**, **pr**, **fast**, **vim** |
+| Bottom edge (chips) | **cloud**, **rc**, mode, **no_transcript**, **update**, **cache** (and what a cold start costs), **miss** (a cache miss and why), idle (Claude Code's "new task? /clear" hint on fixed thresholds, 75 min and 100k; with `CLAUDE_CODE_IDLE_TOKEN_THRESHOLD` set high where `claude` starts, only this one shows), big (context past 200k), drafts, **sandbox**, **working**, **pr**, **fast**, **vim** |
 
 By default the top left holds model and effort, the top right cost and time, row 1 ctx, 5h and week, and row 2
 repo, cwd, session, mem and disks. `repo` shows only inside a repository; `cwd` always shows.

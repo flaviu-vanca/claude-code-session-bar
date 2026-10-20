@@ -108,8 +108,8 @@ MAX_CONFIG = 64 * 1024  # a larger layout is not read: it would cost every run
 TEXT = ['model', 'effort', 'thinking', 'style', 'agent', 'name', 'version', 'cost', 'time', 'api', 'lines', 'clock',
         'repo', 'cwd', 'session', 'worktree', 'dirs', 'mem', 'disks', 'load', 'battery']
 METERS = ['ctx', '5h', 'week', 'spend', 'hits']
-CHIPS = ['cloud', 'rc', 'mode', 'no_transcript', 'update', 'cache', 'miss', 'big', 'drafts', 'sandbox', 'working', 'pr',
-         'fast', 'vim']
+CHIPS = ['cloud', 'rc', 'mode', 'no_transcript', 'update', 'cache', 'miss', 'idle', 'big', 'drafts', 'sandbox',
+         'working', 'pr', 'fast', 'vim']
 PLACES = {'top_left': TEXT, 'top_right': TEXT, 'rows': TEXT + METERS, 'edge': CHIPS}
 DEFAULT = {'top_left': ['model', 'effort'], 'top_right': ['cost', 'time'],
            'rows': [['ctx', '5h', 'week'], ['repo', 'cwd', 'session', 'mem', 'disks']],
@@ -462,6 +462,11 @@ def chip(name, d, s, now):
             why = MISS_CAUSE.get(causes[0], str(causes[0])) if causes else 'unknown'
             return [P('✗ cache miss', RED), P(': ' + why + (f' +{len(causes) - 1}' if len(causes) > 1 else ''), dim=True)]
         return []
+    if name == 'idle':  # Claude Code's "new task? /clear to save N tokens", on the card's own thresholds
+        if not s.get('idle'):
+            return []
+        n = (d.get('context_window') or {}).get('total_input_tokens') or 0
+        return [P('↺ ', YELLOW), P('new task? ', dim=True), P('/clear', BLUE), P(f' {tokens(n)}', dim=True)]
     if name == 'big':  # past 200k tokens of context, where the long-context price applies
         return [P('▲ 200k+', ORANGE)] if d.get('exceeds_200k_tokens') else []
     if name == 'drafts':
@@ -821,6 +826,7 @@ def main():
         s = {'rc': rc, 'busy': rec.get('status') == 'busy', 'sandbox': h.get('sandbox'),
              'newest': newest_version(versions_dir(os.environ)),
              'no_transcript': env_flag(env, 'CLAUDE_CODE_SKIP_PROMPT_HISTORY'),
+             'idle': idle_hint(rec, d, {}, now),  # 75 minutes, 100k: the card's own, so a raised env turns off only Claude Code's
              'mode': last_permission_mode(d.get('transcript_path')) if 'mode' in edge else None,
              'drafts': count_json(os.path.join(claude_dir(os.environ), 'feedback', 'drafts')) if 'drafts' in edge else 0}
         notices = update_ready(s['newest'], d.get('version')) or idle_hint(rec, d, env, now)

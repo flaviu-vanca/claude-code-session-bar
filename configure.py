@@ -80,6 +80,8 @@ WHAT = {
     'no_transcript': 'started with transcript saving off', 'update': 'a newer Claude Code is downloaded: restart',
     'cache': 'the prompt cache is about to expire, or is cold; in brackets what the next request costs then',
     'miss': 'the prompt cache missed in the last 5 minutes, and why', 'big': 'the context is past 200k tokens',
+    'idle': 'Claude Code\'s "new task? /clear" hint: idle 75 minutes with 100k tokens or more; set '
+            'CLAUDE_CODE_IDLE_TOKEN_THRESHOLD high where claude starts to keep only this one',
     'drafts': 'feedback drafts waiting (Claude Code shows them under the card too)', 'sandbox': 'the sandbox is on',
     'working': 'a turn is running', 'pr': "the branch's pull request and its review", 'fast': 'fast mode is on',
     'vim': 'the vim mode, when not NORMAL'}
@@ -100,7 +102,7 @@ SAMPLE = {'session_id': '804d5fae-3e29', 'session_name': 'skin work', 'version':
                            'last_miss_at': NOW - 60, 'last_miss_cause': {'causes': ['ttl_expired_5m']}},
           'pr': {'number': 12, 'url': 'https://github.com/o/r/pull/12', 'review_state': 'approved'}}
 STATES = {'rc': 'session_01X', 'busy': True, 'newest': '2.1.303', 'no_transcript': True, 'sandbox': True,
-          'mode': 'auto', 'drafts': 3}
+          'mode': 'auto', 'drafts': 3, 'idle': True}
 
 
 def save(cfg, path):
