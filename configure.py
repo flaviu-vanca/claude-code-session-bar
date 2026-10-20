@@ -12,6 +12,7 @@ import hmac
 import importlib.util
 import json
 import os
+import queue
 import secrets
 import shutil
 import stat
@@ -362,23 +363,34 @@ PAGE_ENV = ['HOME', 'USERPROFILE', 'SYSTEMROOT', 'COLUMNS', 'CLAUDE_CONFIG_DIR',
             'DBUS_SESSION_BUS_ADDRESS', 'BROWSER', 'TMPDIR', 'TEMP', 'TMP']
 
 
+BROWSER_WAIT = 5  # seconds the launcher waits for the browser to say it opened, before it prints the address
+
+
 def detach(port):
-    """Starts the server in a process of its own and returns: the address is printed only when no browser opened, so
-    `! session-bar` in Claude Code adds next to nothing to the conversation."""
+    """Starts the server in a process of its own and returns. The server says first that it listens (its address),
+    then whether a browser opened; the address is printed unless one did, so `! session-bar` in Claude Code adds next
+    to nothing to the conversation. A browser slow to answer (osascript on a busy Mac, a console browser) gets
+    BROWSER_WAIT seconds, then the address is printed anyway."""
     kw = {'creationflags': 0x8 | 0x200} if os.name == 'nt' else {'start_new_session': True}  # DETACHED, NEW_GROUP
     env = {k: v for k, v in os.environ.items() if k in PAGE_ENV}  # a .cmd launcher has no env -i: keys stop here
     child = subprocess.Popen([sys.executable, '-I', '-S', os.path.abspath(__file__), '--serve', str(port)],
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, **kw)
-    first = []
-    reader = threading.Thread(target=lambda: first.append(child.stdout.readline()), daemon=True)
-    reader.start()
-    reader.join(10)
-    line = first[0].decode(errors='replace').strip() if first else ''
-    if not line:
+    said = queue.Queue()
+    threading.Thread(target=lambda: [said.put(line.decode(errors='replace').strip()) for line in child.stdout],
+                     daemon=True).start()
+    try:
+        listening = said.get(timeout=10)
+    except queue.Empty:
+        listening = ''
+    if not listening:
         print('The settings page did not start.')
         return 1
-    if not line.startswith('opened '):
-        print(line)
+    try:
+        browsed = said.get(timeout=BROWSER_WAIT)
+    except queue.Empty:
+        browsed = ''
+    if browsed != 'opened':
+        print(listening)
     return 0
 
 
@@ -401,11 +413,15 @@ def main(argv=None):
     threading.Thread(target=watch, daemon=True).start()
     serving = threading.Thread(target=server.serve_forever, daemon=True)  # before the browser: a console one blocks
     serving.start()
-    if mode == '--serve':  # one line to the launcher, then nothing: a browser it starts writes to devnull, not to it
+    if mode == '--serve':  # two lines to the launcher, then nothing: a browser it starts writes to devnull, not to it
         out, devnull = os.dup(1), os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, 1)
-        line = f'opened {url}' if webbrowser.open(url) else f'Session Bar settings ({SCOPE}: {SAVE}): {url}'
-        os.write(out, (line + '\n').encode())
+        os.write(out, f'Session Bar settings ({SCOPE}: {SAVE}): {url}\n'.encode())
+        browsed = 'opened' if webbrowser.open(url) else 'no browser'
+        try:
+            os.write(out, f'{browsed}\n'.encode())
+        except OSError:  # the launcher stopped waiting
+            pass
         os.close(out)
     else:
         print(f'Session Bar settings: {url}\nIt stops a few seconds after the page closes; Ctrl+C stops it now.', flush=True)

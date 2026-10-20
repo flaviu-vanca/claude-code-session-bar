@@ -76,6 +76,17 @@ def api(root, path, session=None, body=None):
         return json.load(r)
 
 
+def stopped(root, seconds=20):
+    """Whether the page's server at `root` has gone (it stops a few seconds after the page says goodbye)."""
+    for _ in range(seconds * 10):
+        try:
+            urllib.request.urlopen(root + '/', timeout=1).close()
+        except OSError:
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def main():
     print(f'Python {sys.version.split()[0]} on {sys.platform}')
     with tempfile.TemporaryDirectory() as t:
@@ -142,7 +153,8 @@ def main():
         for name, argv in launchers:
             if os.path.exists(url_file):
                 os.remove(url_file)
-            r = run(argv, {**env, 'BROWSER': browser, 'FAKE_SECRET': 'planted'}, cwd=home)
+            # from this folder, not the temporary home: Windows cannot remove a folder a process has as its cwd
+            r = run(argv, {**env, 'BROWSER': browser, 'FAKE_SECRET': 'planted'}, cwd=HERE)
             for _ in range(100):
                 if os.path.exists(url_file) and os.path.getsize(url_file):
                     break
@@ -159,6 +171,7 @@ def main():
             check(state['scope'] == 'user' and os.path.realpath(state['file']) == os.path.realpath(layout),
                   f'{name}: the page edits the user layout', json.dumps({k: state[k] for k in ('scope', 'file')}))
             api(root, '/api/bye', session, body={})
+            check(stopped(root), f'{name}: the server stops once the page says goodbye')
 
         r = run([sys.executable, '-I', os.path.join(HERE, 'install.py'), '--uninstall'], env)
         with open(os.path.join(claude, 'settings.json'), encoding='utf-8') as f:

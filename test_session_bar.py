@@ -782,24 +782,10 @@ with tempfile.TemporaryDirectory() as t:
     os.remove(layout + '.tmp')
     with open(layout, 'w') as f:  # hostile again, for the detached run below
         f.write('{"rows": [["nope", 5]], "meter": "x"' + ' ' * 70_000 + '}')
-    # started detached, the page's server answers for the project's layout; with no browser to open, the address is
-    # printed; with one, nothing is (so `! session-bar` adds next to nothing to the conversation)
+    # started detached, the page's server answers for the project's layout; when no browser opened, or one is slow to
+    # say so (osascript on a busy Mac, a console browser), the address is printed and the launcher returns; when one
+    # opened, nothing is printed (so `! session-bar` adds next to nothing to the conversation)
     bare = {k: v for k, v in os.environ.items() if k not in ('DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'SESSION_BAR_CONFIG')}
-    began = time.time()
-    run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', '0'], cwd=os.path.join(proj, 'src'),
-                         env={**bare, 'HOME': home, 'PATH': '/nonexistent'}, capture_output=True, text=True, timeout=15)
-    assert run.returncode == 0 and time.time() - began < 5 and run.stdout.count('\n') == 1 and 'http://127.0.0.1:' in run.stdout, run
-    url = run.stdout.strip().rsplit(' ', 1)[1]
-
-    def session(url):  # what the page does with its address: spend the token in #t= for a session
-        root, token = url.split('/#t=')
-        return root, opened(root, token)
-
-    root, C = session(url)
-    st = json.load(urllib.request.urlopen(urllib.request.Request(f'{root}/api/state', headers=C), timeout=5))
-    assert st['scope'] == 'project' and os.path.realpath(st['file']) == os.path.realpath(layout) and st['cfg'] == sb.load_config('/nonexistent'), st
-    urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
-    import socket
 
     def browser(name, body):  # a stand-in browser: BROWSER runs it with the page's address
         path = os.path.join(t, name)
@@ -813,6 +799,28 @@ with tempfile.TemporaryDirectory() as t:
             s.bind(('127.0.0.1', 0))
             return s.getsockname()[1]
 
+    def session(url):  # what the page does with its address: spend the token in #t= for a session
+        root, token = url.split('/#t=')
+        return root, opened(root, token)
+
+    def bye(root, C):
+        urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
+
+    if sys.platform.startswith('linux'):  # no browser at all: no display, nothing on PATH (macOS always has osascript)
+        began = time.time()
+        run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', '0'], cwd=os.path.join(proj, 'src'),
+                             env={**bare, 'HOME': home, 'PATH': '/nonexistent'}, capture_output=True, text=True, timeout=15)
+        assert run.returncode == 0 and time.time() - began < 5 and run.stdout.count('\n') == 1 and '/#t=' in run.stdout, run
+        bye(*session(run.stdout.strip().rsplit(' ', 1)[1]))
+    began = time.time()
+    run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', '0'], cwd=os.path.join(proj, 'src'), capture_output=True,
+                         text=True, env={**bare, 'HOME': home, 'BROWSER': browser('slow', 'sleep 9'), 'PATH': '/usr/bin:/bin'}, timeout=30)
+    assert run.returncode == 0 and time.time() - began < 8 and run.stdout.count('\n') == 1 and '/#t=' in run.stdout, run
+    root, C = session(run.stdout.strip().rsplit(' ', 1)[1])
+    st = json.load(urllib.request.urlopen(urllib.request.Request(f'{root}/api/state', headers=C), timeout=5))
+    assert st['scope'] == 'project' and os.path.realpath(st['file']) == os.path.realpath(layout) and st['cfg'] == sb.load_config('/nonexistent'), st
+    bye(root, C)
+
     seen = os.path.join(t, 'opened.txt')
     run = subprocess.run([sys.executable, '-I', '-S', wspec.origin, '--detach', str(free_port())], cwd=proj, capture_output=True, text=True,
                          env={**bare, 'HOME': home, 'BROWSER': browser('record', f'echo "$1" > {seen}'), 'PATH': '/usr/bin:/bin'}, timeout=15)
@@ -820,8 +828,7 @@ with tempfile.TemporaryDirectory() as t:
     with open(seen) as f:
         given = f.read().strip()
     assert '/#t=' in given and '?' not in given, given  # in the fragment: never in a request line, a log or a Referer
-    root, C = session(given)
-    urllib.request.urlopen(urllib.request.Request(f'{root}/api/bye', data=b'', headers=C), timeout=5)
+    bye(*session(given))
     # the server answers while a browser that blocks (a console one) still runs
     port = free_port()
     slow = subprocess.Popen([sys.executable, '-I', '-S', wspec.origin, '--serve', str(port)], cwd=proj, stdout=subprocess.DEVNULL,
@@ -924,7 +931,7 @@ seen = {}
 
 
 class Started:
-    stdout = io.BytesIO(b'opened http://127.0.0.1:1/\n')
+    stdout = io.BytesIO(b'Session Bar settings (user: x): http://127.0.0.1:1/#t=x\nopened\n')
 
 
 def popen(cmd, **kw):
