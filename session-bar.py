@@ -98,7 +98,7 @@ MISS_CAUSE = {'system_prompt_changed': 'system prompt', 'tools_changed': 'tools'
               'defer_loading_changed': 'deferred tools', 'messages_rewritten': 'earlier messages',
               'ttl_expired_5m': 'idle 5m', 'ttl_expired_1h': 'idle 1h', 'likely_server_side': 'server side'}
 VERSION = re.compile(r'^\d+(\.\d+)+$')
-DISKS = ['/tmp', '~/.cache']  # the tmpfs and the scratch disk
+DISKS = ['~'] if os.name == 'nt' else ['/tmp', '~/.cache']  # the tmpfs and the scratch disk; the home drive
 FOOTER_PADDING = 2  # columns Claude Code's footer row keeps on each side of the status line (oQe); its notes wrap below
 RC_PILL = len(' /rc')  # Claude Code's /rc pill and the gap before it (columnGap 1), shown from 60 columns (Tbn)
 NOTICE = len('✔ Update installed · Restart to update')  # Claude Code's widest notice; its idle /clear hint is as wide
@@ -319,24 +319,32 @@ def versions_dir(env):
 def host(project, env=os.environ):
     info = {'disks': [], 'sandbox': False}
     try:
-        mem = {}
-        with open('/proc/meminfo') as f:
-            for line in f:
-                k, v = line.split(':', 1)
-                mem[k] = int(v.split()[0])
-        info['mem'] = ((mem['MemTotal'] - mem['MemAvailable']) / 2**20, mem['MemTotal'] / 2**20)
-    except (OSError, KeyError, ValueError):
+        if os.name == 'nt':
+            info['mem'] = windows_memory()
+        else:
+            mem = {}
+            with open('/proc/meminfo') as f:  # Linux; macOS has no file to read it from, so it shows none
+                for line in f:
+                    k, v = line.split(':', 1)
+                    mem[k] = int(v.split()[0])
+            info['mem'] = ((mem['MemTotal'] - mem['MemAvailable']) / 2**20, mem['MemTotal'] / 2**20)
+    except (OSError, KeyError, ValueError, AttributeError):
         pass
     for mount in DISKS:
         try:
-            s = os.statvfs(os.path.expanduser(mount))
-            used = s.f_blocks - s.f_bfree
-            info['disks'].append((mount, round(100 * used / max(1, used + s.f_bavail))))
+            if os.name == 'nt':
+                import shutil  # 8 ms to import, so only where os.statvfs is missing
+                u = shutil.disk_usage(os.path.expanduser(mount))
+                used, free = u.used, u.free
+            else:
+                s = os.statvfs(os.path.expanduser(mount))
+                used, free = s.f_blocks - s.f_bfree, s.f_bavail
+            info['disks'].append((mount, round(100 * used / max(1, used + free))))
         except OSError:
             pass
     try:
         info['load'] = (os.getloadavg()[0], os.cpu_count() or 1)
-    except OSError:
+    except (OSError, AttributeError):  # Windows has no load average
         pass
     info['battery'] = battery()
     # the sandbox setting as Claude Code layers it: the user's, the project's, the project's local one
@@ -350,6 +358,21 @@ def host(project, env=os.environ):
         if enabled is not None:
             info['sandbox'] = bool(enabled)
     return info
+
+
+def windows_memory():
+    """Memory in use and in all, in GiB, from GlobalMemoryStatusEx."""
+    import ctypes
+
+    class Status(ctypes.Structure):
+        _fields_ = [('length', ctypes.c_ulong), ('load', ctypes.c_ulong)] + [
+            (n, ctypes.c_ulonglong) for n in ('total', 'avail', 'page_total', 'page_avail', 'virt_total', 'virt_avail', 'ext')]
+
+    st = Status()
+    st.length = ctypes.sizeof(Status)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+        raise OSError('GlobalMemoryStatusEx failed')
+    return (st.total - st.avail) / 2**30, st.total / 2**30
 
 
 def battery(root='/sys/class/power_supply'):
@@ -644,10 +667,36 @@ def session_record(sid, sessions_dir):
                 rec = json.load(f)
         except (OSError, ValueError):
             continue
-        if (isinstance(rec, dict) and rec.get('sessionId') == sid and os.path.exists(f"/proc/{rec.get('pid')}")
+        if (isinstance(rec, dict) and rec.get('sessionId') == sid and alive(rec.get('pid'))
                 and (rec.get('updatedAt') or 0) >= (best.get('updatedAt') or 0)):
             best = rec
     return best
+
+
+def alive(pid):
+    """Whether process `pid` runs: os.kill(pid, 0) on POSIX; on Windows OpenProcess, since os.kill sends Ctrl+C there."""
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    if os.name != 'nt':
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+    import ctypes
+    kernel = ctypes.windll.kernel32
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259  # STILL_ACTIVE
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def newest_version(versions_dir):

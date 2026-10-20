@@ -155,6 +155,22 @@ assert sb.claude_dir({'CLAUDE_CONFIG_DIR': '/c'}) == '/c' and sb.claude_dir({'CL
 assert sb.versions_dir({'XDG_DATA_HOME': '/d'}) == os.path.join('/d', 'claude', 'versions')
 assert sb.versions_dir({}) == os.path.join(home, '.local', 'share', 'claude', 'versions')
 
+# a process is alive without /proc: os.kill(pid, 0) on POSIX, OpenProcess on Windows (never kill there: 0 is Ctrl+C)
+import subprocess
+import sys
+
+dead = subprocess.Popen([sys.executable, '-c', ''])
+dead.wait()
+assert sb.alive(os.getpid()) is True and sb.alive(dead.pid) is False and sb.alive('x') is False and sb.alive(None) is False
+assert '/proc/{' not in open(spec.origin).read().split('def session_record')[1].split('\ndef ')[0]
+# a system without a load average (Windows) loses that element, never the card
+saved = os.getloadavg
+del os.getloadavg
+try:
+    assert 'load' not in sb.host('/nonexistent')
+finally:
+    os.getloadavg = saved
+
 # names from disk or the payload cannot drive the terminal, and a hostile .git cannot stall the card
 import signal
 
